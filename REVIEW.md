@@ -37,6 +37,9 @@ fail under v3.5.5, where `/typeEncoding:a` proves `assert false`, and the second
 with the reverse casts dropped and the retyping kept.  Both pass with the fix, under Z3
 4.11.2 (the version the test suite assumes), 4.12.1, 4.16.0 and 5.1.0, in batch mode too.
 
+`8f4eaef` is upstream's `5b67826` (#1160), cherry-picked: it replaces the `%T`
+substitution, which the current `lit` has removed, in `inline/expansion2.bpl`.
+
 Upstream keeps no change log in the repository; its releases are GitHub releases.  This
 line's release notes are `.github/review/release-notes.md`, which the release carries.
 
@@ -71,7 +74,11 @@ upstream release.
 tag they publish to nuget.org.  Its jobs `test` and `lean-auto` are upstream's own test
 jobs, without the deployment steps: the parser check, the build with warnings as errors,
 the unit tests and the whole `lit` suite with Z3 4.11.2, in Debug and Release and with and
-without batch mode, and the Lean backend's tests.  The job `packages` builds and packs the
+without batch mode, and the Lean backend's tests.  They take master's limits, and give
+each test's Boogie process 300 s instead of `lit.site.cfg`'s 110 s: in batch mode on
+GitHub's runners, v3.5.5's `civl/large-samples/GC.bpl` takes longer than 110 s and is
+aborted, with the fix and without it (its 2,772 queries do not use the arguments encoding,
+and the fix sends the solver the same queries).  The job `packages` builds and packs the
 14 packages of an upstream release at this line's version.  On a tag, `release` checks that
 the tag names the version and attaches the packages, with their sha256 sums in
 `SHA256SUMS`, to a GitHub release.
