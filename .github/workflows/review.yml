@@ -1,9 +1,10 @@
 # This fork's CI for its review lines, in place of upstream's workflows, which publish
 # to nuget.org on a tag.  The jobs `test` and `lean-auto` are upstream's own test jobs
 # (.github/workflows/test.yml and test-lean-auto.yml, with the timeouts of upstream's
-# master), without the deployment steps.  The job `packages`
-# builds the NuGet packages at this line's version, and on a tag `release` attaches
-# them, with their sha256 sums, to a GitHub release.  Standard GitHub-hosted runners only.
+# master and a process limit of 300 s for each test's Boogie), without the deployment
+# steps.  The job `packages` builds the NuGet packages at this line's version, and on a
+# tag `release` attaches them, with their sha256 sums, to a GitHub release.  Standard
+# GitHub-hosted runners only.
 name: review
 
 on:
@@ -87,8 +88,11 @@ jobs:
           dotnet pack --no-build -c ${{ matrix.configuration }} ${SOLUTION}
           # Run unit tests
           dotnet test --blame-hang-timeout 300s --no-build -c ${{ matrix.configuration }} ${SOLUTION}
-          # Run lit test suite
-          lit --param ${{ matrix.lit_param }} -v --timeout=300 -D configuration=${{ matrix.configuration }} Test
+          # Run lit test suite.  Each Boogie process gets 300 s, lit's own limit per test, in
+          # place of lit.site.cfg's 110 s: v3.5.5's civl/large-samples/GC.bpl (2,772 queries,
+          # none under the arguments encoding) takes longer than 110 s in batch mode on these
+          # runners, where the process limit then aborts it (upstream's master has reworked it).
+          lit --param ${{ matrix.lit_param }} --param boogie_params=-processTimeLimit:300 -v --timeout=300 -D configuration=${{ matrix.configuration }} Test
 
   lean-auto:
     name: LeanAuto CI
