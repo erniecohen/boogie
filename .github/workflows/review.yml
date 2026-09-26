@@ -1,0 +1,206 @@
+# This fork's CI for its review lines, in place of upstream's workflows, which publish
+# to nuget.org on a tag.  The jobs `test` and `lean-auto` are upstream's own test jobs
+# (.github/workflows/test.yml and test-lean-auto.yml, with the timeouts of upstream's
+# master), without the deployment steps.  The job `packages`
+# builds the NuGet packages at this line's version, and on a tag `release` attaches
+# them, with their sha256 sums, to a GitHub release.  Standard GitHub-hosted runners only.
+name: review
+
+on:
+  push:
+    branches: ['review/**']
+    tags: ['v*']
+  pull_request:
+    branches: ['review/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+env:
+  SOLUTION: Source/Boogie.sln
+  Z3URL: https://github.com/Z3Prover/z3/releases/download/z3-4.11.2/z3-4.11.2-x64-glibc-2.31.zip
+  CVC5URL: https://github.com/cvc5/cvc5/releases/download/cvc5-0.0.7/cvc5-Linux
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        id: version
+        run: sh .github/review/version.sh | tee -a "$GITHUB_OUTPUT"
+
+  test:
+    name: Boogie CI (${{ matrix.configuration }}, ${{ matrix.lit_param }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
+        lit_param: ["batch_mode=True", "batch_mode=False"]
+    steps:
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Checkout Boogie
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install tools, build Boogie, test Boogie
+        run: |
+          # Download a Z3 release
+          wget ${Z3URL}
+          unzip z3*.zip
+          export PATH="$(find $PWD/z3* -name bin -type d):$PATH"
+          # Download a CVC5 release
+          mkdir -p bin
+          (cd bin && wget ${CVC5URL} && mv cvc5-Linux cvc5 && chmod +x cvc5)
+          export PATH="$PWD/bin:$PATH"
+          # Install python tools
+          sudo pip3 install setuptools
+          sudo pip3 install lit OutputCheck pyyaml psutil
+          # Change directory to Boogie root folder
+          cd $GITHUB_WORKSPACE
+          # Restore dotnet tools
+          dotnet tool restore
+          # Check that generated scanner and parser are consistent with attributed grammar
+          dotnet tool run coco Source/Core/BoogiePL.atg -namespace Microsoft.Boogie -frames Source/Core/
+          diff --strip-trailing-cr Source/Core/Parser.cs Source/Core/Parser.cs.old
+          diff --strip-trailing-cr Source/Core/Scanner.cs Source/Core/Scanner.cs.old
+          # Build Boogie
+          dotnet build -warnaserror -c ${{ matrix.configuration }} ${SOLUTION}
+          # Create packages
+          dotnet pack --no-build -c ${{ matrix.configuration }} ${SOLUTION}
+          # Run unit tests
+          dotnet test --blame-hang-timeout 300s --no-build -c ${{ matrix.configuration }} ${SOLUTION}
+          # Run lit test suite
+          lit --param ${{ matrix.lit_param }} -v --timeout=300 -D configuration=${{ matrix.configuration }} Test
+
+  lean-auto:
+    name: LeanAuto CI
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Setup Z3
+        uses: cda-tum/setup-z3@v1
+        with:
+          version: 4.12.5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout Boogie
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install tools, build Boogie
+        run: |
+          dotnet tool restore
+          dotnet build -warnaserror Source/Boogie.sln
+      - name: Setup Lean
+        uses: Julian/setup-lean@v1
+        with:
+          # Lean version will be chosen based on Test/lean-auto/lean-toolchain
+          default-toolchain-file: Test/lean-auto/lean-toolchain
+      - name: Test Lean generator on textbook examples
+        working-directory: Test/lean-auto
+        run: |
+          lake build
+          ./testall.sh
+
+  packages:
+    name: Packages
+    needs: version
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build and pack, as upstream's release does, at this line's version
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          dotnet build -warnaserror -c Release -p:Version="$VERSION" ${SOLUTION}
+          dotnet pack --no-build -c Release -p:Version="$VERSION" -o packages ${SOLUTION}
+      - name: Check the packages and sum them
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          cd packages
+          ls -l
+          # The 14 packages of an upstream release, each at this version.
+          for p in Boogie Boogie.AbstractInterpretation Boogie.BaseTypes Boogie.CodeContractsExtender \
+                   Boogie.Concurrency Boogie.Core Boogie.ExecutionEngine Boogie.Graph Boogie.Houdini \
+                   Boogie.Model Boogie.Provers.LeanAuto Boogie.Provers.SMTLib Boogie.VCExpr Boogie.VCGeneration; do
+            test -f "$p.$VERSION.nupkg"
+            unzip -p "$p.$VERSION.nupkg" "$p.nuspec" | grep -q "<version>$VERSION</version>"
+          done
+          test "$(ls *.nupkg | wc -l)" -eq 14
+          sha256sum *.nupkg | tee SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: |
+            packages/*.nupkg
+            packages/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 90
+
+  release:
+    name: GitHub release
+    needs: [version, test, lean-auto, packages]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: The tag must name this tree's version
+        run: |
+          echo "tag ${{ github.ref_name }}, expected ${{ needs.version.outputs.tag }}"
+          test "${{ github.ref_name }}" = "${{ needs.version.outputs.tag }}"
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: packages
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          (cd packages && sha256sum -c SHA256SUMS)
+          {
+            cat .github/review/release-notes.md
+            echo
+            echo "The NuGet packages at version \`$VERSION\`, the 14 of an upstream release, built from"
+            echo "this tag by the workflow \`review\`.  The tag's \`REVIEW.md\` says what the line changes"
+            echo "and how its version is computed."
+            echo
+            echo "sha256:"
+            echo
+            echo '```'
+            cat packages/SHA256SUMS
+            echo '```'
+          } > notes.md
+          gh release create "$TAG" packages/*.nupkg packages/SHA256SUMS --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --title "Boogie $VERSION" --notes-file notes.md
