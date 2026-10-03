@@ -273,7 +273,9 @@ namespace Microsoft.Boogie
   [ContractClass(typeof(DeclarationContracts))]
   public abstract class Declaration : Absy, ICarriesAttributes
   {
-    public virtual int ContentHash => 1; 
+    public virtual int ContentHash => 1;
+
+    public virtual int GetContentHash(bool deterministicLiteralHashes) => ContentHash;
     
     public QKeyValue Attributes { get; set; }
 
@@ -588,6 +590,9 @@ namespace Microsoft.Boogie
     }
 
     public override int ContentHash => Util.GetHashCode(1218192003, expression.ContentHash);
+
+    public override int GetContentHash(bool deterministicLiteralHashes) =>
+      Util.GetHashCode(1218192003, expression.GetContentHash(deterministicLiteralHashes));
 
     public override void Emit(TokenTextWriter stream, int level)
     {

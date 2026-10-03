@@ -200,7 +200,8 @@ namespace Microsoft.Boogie
       if (randomSeed == 0) {
         // By ordering the declarations based on their content and naming them based on order, the solver input stays constant under reordering and renaming.
         return Options.NormalizeDeclarationOrder
-          ? declarations.OrderBy(d => d.ContentHash)
+          ? declarations.OrderBy(d => Options.DeterministicLiteralHashes
+            ? d.GetContentHash(true) : d.ContentHash)
           : declarations;
       }
 

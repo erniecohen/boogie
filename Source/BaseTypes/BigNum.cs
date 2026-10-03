@@ -144,6 +144,23 @@ namespace Microsoft.BaseTypes
       return this.val.GetHashCode();
     }
 
+    /// <summary>A process-independent hash of the integer's signed byte representation.</summary>
+    [Pure]
+    public int GetDeterministicHashCode() => HashInteger(val);
+
+    internal static int HashInteger(BIM value)
+    {
+      // ToByteArray uses the minimal little-endian two's-complement representation,
+      // independent of the current culture, architecture and runtime hash seed.
+      unchecked {
+        uint hash = 2166136261;
+        foreach (var octet in value.ToByteArray()) {
+          hash = (hash ^ octet) * 16777619;
+        }
+        return (int)hash;
+      }
+    }
+
     [Pure]
     public override string ToString()
     {

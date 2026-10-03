@@ -21,6 +21,9 @@ namespace Microsoft.Boogie
   public abstract class Expr : Absy
   {
     public abstract int ContentHash { get; }
+
+    // Keep the legacy property and ordinary equality hashes independent of the opt-in mode.
+    public virtual int GetContentHash(bool deterministicLiteralHashes) => ContentHash;
     
     public Expr(IToken tok, bool immutable)
       : base(tok)
@@ -714,6 +717,20 @@ namespace Microsoft.Boogie
         }
         return Val.GetHashCode();
       }
+    }
+
+    public override int GetContentHash(bool deterministicLiteralHashes)
+    {
+      if (!deterministicLiteralHashes) {
+        return ContentHash;
+      }
+      return Val switch {
+        BigNum integer => integer.GetDeterministicHashCode(),
+        BigDec real => real.GetDeterministicHashCode(),
+        BigFloat floatingPoint => floatingPoint.GetDeterministicHashCode(),
+        BvConst bitvector => unchecked(bitvector.Value.GetDeterministicHashCode() ^ bitvector.Bits),
+        _ => ContentHash
+      };
     }
 
     public readonly object
@@ -1472,6 +1489,8 @@ namespace Microsoft.Boogie
     private Expr _Expr;
 
     public override int ContentHash => Util.GetHashCode(262567431, Expr.ContentHash);
+
+    public override int GetContentHash(bool deterministicLiteralHashes) => Util.GetHashCode(262567431, Expr.GetContentHash(deterministicLiteralHashes));
 
     public Expr Expr
     {
@@ -3980,6 +3999,8 @@ namespace Microsoft.Boogie
   {
     public override int ContentHash => Util.GetHashCode(1947706825, Start, End, Bitvector.ContentHash);
 
+    public override int GetContentHash(bool deterministicLiteralHashes) => Util.GetHashCode(1947706825, Start, End, Bitvector.GetContentHash(deterministicLiteralHashes));
+
     private /*readonly--except in StandardVisitor*/ Expr
       _Bitvector;
 
@@ -4146,6 +4167,8 @@ namespace Microsoft.Boogie
   public class BvConcatExpr : Expr
   {
     public override int ContentHash => Util.GetHashCode(1653318336, E0.ContentHash, E1.ContentHash);
+
+    public override int GetContentHash(bool deterministicLiteralHashes) => Util.GetHashCode(1653318336, E0.GetContentHash(deterministicLiteralHashes), E1.GetContentHash(deterministicLiteralHashes));
     
     private /*readonly--except in StandardVisitor*/ Expr
       _E0, _E1;

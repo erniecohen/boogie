@@ -57,6 +57,33 @@ procedure M(p: Person)
       Assert.AreNotEqual(proverLog1, proverLog3);
     }
     
+    [TestCase("4294967296", "34359738368", "int")]
+    [TestCase("-4294967296", "-34359738368", "int")]
+    [TestCase("12345678901234567890.125", "98765432109876543210.5", "real")]
+    [TestCase("18446744073709551616bv128", "36893488147419103232bv128", "bv128")]
+    [TestCase("0x1.123456789abcde0f53e11", "0x1.23456789abcdee0f53e11", "float53e11")]
+    public async Task DeterministicNumericOrderSurvivesRenaming(string first, string second, string type)
+    {
+      var a = $@"function A() returns ({type});
+axiom A() == {first};
+function B() returns ({type});
+axiom B() == {second};
+procedure M() {{ assert A() == {first} && B() == {second}; }}";
+      var b = $@"function Y() returns ({type});
+axiom Y() == {second};
+function X() returns ({type});
+axiom X() == {first};
+procedure M() {{ assert X() == {first} && Y() == {second}; }}";
+      var options = CommandLineOptions.FromArguments(TextWriter.Null, "/deterministicLiteralHashes:1");
+      options.NormalizeNames = true;
+      options.EmitDebugInformation = false;
+      Assert.True(options.DeterministicLiteralHashes);
+      Assert.False(CommandLineOptions.FromArguments(TextWriter.Null).DeterministicLiteralHashes);
+      Assert.False(CommandLineOptions.FromArguments(TextWriter.Null, "/deterministicLiteralHashes:0").DeterministicLiteralHashes);
+      Assert.AreEqual(await GetProverLogs.GetProverLogForProgram(options, a),
+        await GetProverLogs.GetProverLogForProgram(options, b));
+    }
+
     [Test()]
     public async Task TurnOffEmitDebugInformation()
     {

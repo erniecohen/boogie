@@ -15,3 +15,8 @@ of solver work.  Dafny 4.11.0 selects this encoding.  Built against this fix and
 programs of Dafny's own test suite at a resource limit of 16,000,000, it changed the outcome of
 10: in 5 a proof now finishes within the limit that did not, and in 5 one stops finishing.  No
 program gained an error.
+
+The new opt-in `/deterministicLiteralHashes:1` makes numeric-literal content hashes
+independent of per-process runtime hash seeds when normalizing declaration order.
+The default remains unchanged. Enabling the option may change solver resource counts
+and outcomes at a resource limit. See `REVIEW.md` for scope and regression coverage.

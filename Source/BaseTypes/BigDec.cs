@@ -152,6 +152,10 @@ namespace Microsoft.BaseTypes
       return this.mantissa.GetHashCode() * 13 + this.exponent.GetHashCode();
     }
 
+    /// <summary>A process-independent hash of the normalized mantissa and exponent.</summary>
+    [Pure]
+    public int GetDeterministicHashCode() => unchecked(BigNum.HashInteger(mantissa) * 13 + exponent);
+
     [Pure]
     public override string ToString()
     {
