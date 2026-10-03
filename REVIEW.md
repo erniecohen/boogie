@@ -98,7 +98,11 @@ no effect with declaration normalization disabled or a nonzero random seed. Hash
 remain ordering hints, not numeric equality tests; collisions remain possible, as with
 the previous ordering. No axiom or verification condition is added or removed.
 
-`Test/test21/issue-30.bpl` compares complete solver logs from fresh processes and checks
+`Test/test21/issue-30.bpl` compares complete solver queries through check-sat from fresh processes and checks
 that disabling declaration normalization ignores the option. Unit tests cover fixed
 integer hash vectors, decimal normalization, floating-point representations, culture
 independence, and solver-log invariance under declaration reordering and renaming.
+
+The query comparison validates the trailing response/cleanup commands separately.
+Batch mode does not send its final pop to the solver, and logging that pop can race
+with disposal; its optional presence must not fail the ordering regression.
