@@ -1319,7 +1319,7 @@ namespace Microsoft.Boogie
           return true;
         
         case "deterministicLiteralHashes":
-          ps.GetIntArgument(x => DeterministicLiteralHashes = x, 2);
+          ps.GetIntArgument(x => DeterministicLiteralHashes = x == 1, 2);
           return true;
 
         case "normalizeDeclarationOrder":
