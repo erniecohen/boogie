@@ -88,7 +88,9 @@ the tag names the version and attaches the packages, with their sha256 sums in
 `/deterministicLiteralHashes:1` opts into process-independent hashes for numeric
 literals when `/normalizeDeclarationOrder:1` sorts declarations. It covers integers,
 normalized decimal reals, bitvectors and IEEE floating-point representations, including
-signed zero and special values. String hashing already has this property. Rational is
+signed zero and special values, and canonical floating-point rounding modes.
+String literals already have this property; rounding-mode literals wrap strings and
+now use the same deterministic string hash in the opt-in path. Rational is
 not a literal-expression value; decimal and floating-point literals are hashed directly,
 without using Rational or its ordinary hash code.
 

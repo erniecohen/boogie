@@ -47,3 +47,15 @@ axiom Bits == 18446744073709551616bv128;
 const Float: float53e11;
 axiom Float == 0x1.123456789abcde0f53e11;
 procedure Ordered() { assert K0 < K1 && K1 < K2 && K2 < K3 && K3 < K4 && K4 < K5 && K5 < K6 && K6 < K7; }
+
+// Rounding modes wrap strings whose ordinary hash is randomized too.
+const Mode0: rmode;
+axiom Mode0 == RNE;
+const Mode1: rmode;
+axiom Mode1 == RNA;
+const Mode2: rmode;
+axiom Mode2 == RTP;
+const Mode3: rmode;
+axiom Mode3 == RTN;
+const Mode4: rmode;
+axiom Mode4 == RTZ;

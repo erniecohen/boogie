@@ -728,6 +728,7 @@ namespace Microsoft.Boogie
         BigNum integer => integer.GetDeterministicHashCode(),
         BigDec real => real.GetDeterministicHashCode(),
         BigFloat floatingPoint => floatingPoint.GetDeterministicHashCode(),
+        RoundingMode roundingMode => roundingMode.ToString().GetDeterministicHashCode(),
         BvConst bitvector => unchecked(bitvector.Value.GetDeterministicHashCode() ^ bitvector.Bits),
         _ => ContentHash
       };

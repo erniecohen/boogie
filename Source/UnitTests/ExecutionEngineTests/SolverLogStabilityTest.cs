@@ -62,6 +62,7 @@ procedure M(p: Person)
     [TestCase("12345678901234567890.125", "98765432109876543210.5", "real")]
     [TestCase("18446744073709551616bv128", "36893488147419103232bv128", "bv128")]
     [TestCase("0x1.123456789abcde0f53e11", "0x1.23456789abcdee0f53e11", "float53e11")]
+    [TestCase("RNE", "RTZ", "rmode")]
     public async Task DeterministicNumericOrderSurvivesRenaming(string first, string second, string type)
     {
       var a = $@"function A() returns ({type});

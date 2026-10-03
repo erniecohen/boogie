@@ -22,6 +22,21 @@ public class DeterministicLiteralHashTests
     Assert.AreEqual(literal.ContentHash, literal.GetContentHash(false));
   }
 
+  [TestCase("RNE", "roundNearestTiesToEven")]
+  [TestCase("RNA", "roundNearestTiesToAway")]
+  [TestCase("RTP", "roundTowardPositive")]
+  [TestCase("RTN", "roundTowardNegative")]
+  [TestCase("RTZ", "roundTowardZero")]
+  public void RoundingModeAliasesHaveDeterministicHashes(string shortName, string longName)
+  {
+    var literal = new LiteralExpr(Token.NoToken, RoundingMode.FromString(shortName));
+    var alias = new LiteralExpr(Token.NoToken, RoundingMode.FromString(longName));
+    Assert.AreEqual(shortName.GetDeterministicHashCode(), literal.GetContentHash(true));
+    Assert.AreEqual(literal.GetContentHash(true), alias.GetContentHash(true));
+    Assert.AreEqual(literal.Val.GetHashCode(), literal.ContentHash);
+    Assert.AreEqual(literal.ContentHash, literal.GetContentHash(false));
+  }
+
   [Test]
   public void NumericRepresentationsAndCulture()
   {
