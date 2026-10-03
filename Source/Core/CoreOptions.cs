@@ -87,6 +87,7 @@ namespace Microsoft.Boogie
     bool PrintSplitDeclarations { get; }
     bool PrettyPrint { get; }
     bool NormalizeDeclarationOrder { get; }
+    bool DeterministicLiteralHashes { get; }
     XmlSink XmlSink { get; }
     uint VcsFinalAssertTimeout { get; }
     uint VcsKeepGoingTimeout { get; }

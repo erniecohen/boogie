@@ -236,6 +236,8 @@ namespace Microsoft.Boogie
       set => normalizeDeclarationOrder = value;
     }
 
+    public bool DeterministicLiteralHashes { get; set; }
+
     public bool ImmediatelyAcceptCommands => StratifiedInlining > 0 || ContractInfer;
 
     public bool ProduceUnsatCores => TrackVerificationCoverage ||
@@ -1316,6 +1318,10 @@ namespace Microsoft.Boogie
           ps.GetIntArgument(x => normalizeNames = x);
           return true;
         
+        case "deterministicLiteralHashes":
+          ps.GetIntArgument(x => DeterministicLiteralHashes = x == 1, 2);
+          return true;
+
         case "normalizeDeclarationOrder":
           ps.GetIntArgument(x => normalizeDeclarationOrder = x);
           return true;
@@ -1848,6 +1854,13 @@ namespace Microsoft.Boogie
                 1 (default) - Normalize order of top-level declarations when generating SMT commands.
                   This keeps SMT solver input, and thus output, 
                   constant when reordering declarations in the input program.
+
+  /deterministicLiteralHashes:<n>
+                0 (default) - Use the legacy literal hashes for declaration ordering.
+                1 - Use process-independent numeric literal hashes when normalizing
+                  declaration order. This may change solver resource use and results
+                  at a resource limit. Has no effect when declaration normalization
+                  is disabled or a nonzero random seed selects shuffled order.
 
   ---- Inference options -----------------------------------------------------
 

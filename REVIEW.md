@@ -82,3 +82,29 @@ and the fix sends the solver the same queries).  The job `packages` builds and p
 14 packages of an upstream release at this line's version.  On a tag, `release` checks that
 the tag names the version and attaches the packages, with their sha256 sums in
 `SHA256SUMS`, to a GitHub release.
+
+## Deterministic numeric declaration hashes
+
+`/deterministicLiteralHashes:1` opts into process-independent hashes for numeric
+literals when `/normalizeDeclarationOrder:1` sorts declarations. It covers integers,
+normalized decimal reals, bitvectors and IEEE floating-point representations, including
+signed zero and special values, and canonical floating-point rounding modes.
+String literals already have this property; rounding-mode literals wrap strings and
+now use the same deterministic string hash in the opt-in path. Rational is
+not a literal-expression value; decimal and floating-point literals are hashed directly,
+without using Rational or its ordinary hash code.
+
+The option defaults to 0, preserving the existing ordering path and ordinary equality
+hashes. Enabling it can change solver costs and outcomes at a resource limit. It has
+no effect with declaration normalization disabled or a nonzero random seed. Hashes
+remain ordering hints, not numeric equality tests; collisions remain possible, as with
+the previous ordering. No axiom or verification condition is added or removed.
+
+`Test/test21/issue-30.bpl` compares complete solver queries through check-sat from fresh processes and checks
+that disabling declaration normalization ignores the option. Unit tests cover fixed
+integer hash vectors, decimal normalization, floating-point representations, culture
+independence, and solver-log invariance under declaration reordering and renaming.
+
+The query comparison validates the trailing response/cleanup commands separately.
+Batch mode does not send its final pop to the solver, and logging that pop can race
+with disposal; its optional presence must not fail the ordering regression.

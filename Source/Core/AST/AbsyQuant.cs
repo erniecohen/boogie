@@ -41,6 +41,9 @@ namespace Microsoft.Boogie
   {
     public override int ContentHash => Util.GetHashCode(2099615205, Kind, TypeParameters.Count, Dummies.Count, Body.ContentHash);
 
+    public override int GetContentHash(bool deterministicLiteralHashes) =>
+      Util.GetHashCode(2099615205, Kind, TypeParameters.Count, Dummies.Count, Body.GetContentHash(deterministicLiteralHashes));
+
     public List<TypeVariable>
       TypeParameters;
 
@@ -1077,6 +1080,10 @@ namespace Microsoft.Boogie
 
     public override int ContentHash => Util.GetHashCode(1842378754, Dummies.Count,
       Rhss.Select(x => x.ContentHash).Aggregate(Body.ContentHash, Util.GetHashCode));
+
+    public override int GetContentHash(bool deterministicLiteralHashes) => Util.GetHashCode(1842378754, Dummies.Count,
+      Rhss.Select(x => x.GetContentHash(deterministicLiteralHashes))
+        .Aggregate(Body.GetContentHash(deterministicLiteralHashes), Util.GetHashCode));
 
     [Pure]
     public override int ComputeHashCode()

@@ -10,6 +10,10 @@ public class NAryExpr : Expr
   public override int ContentHash =>
     Args.Select(a => a.ContentHash).Aggregate(Util.GetHashCode(98765939, Fun.ContentHash), Util.GetHashCode);
     
+  public override int GetContentHash(bool deterministicLiteralHashes) =>
+    Args.Select(a => a.GetContentHash(deterministicLiteralHashes))
+      .Aggregate(Util.GetHashCode(98765939, Fun.ContentHash), Util.GetHashCode);
+
   [Additive] [Peer] private IAppliable _Fun;
 
   public IAppliable Fun

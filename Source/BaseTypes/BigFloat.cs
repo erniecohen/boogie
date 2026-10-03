@@ -977,6 +977,21 @@ namespace Microsoft.BaseTypes
     [Pure] public override int GetHashCode() =>
       HashCode.Combine(significand, exponent, signBit, SignificandSize, ExponentSize);
 
+    /// <summary>A process-independent hash of the IEEE representation, including its format.</summary>
+    /// <remarks>This is a content hash, not an implementation of floating-point equality.
+    /// In particular, the signs of zero are distinct in SMT floating-point operations.</remarks>
+    [Pure]
+    public int GetDeterministicHashCode()
+    {
+      unchecked {
+        var hash = BigNum.HashInteger(significand);
+        hash = 31 * hash + BigNum.HashInteger(exponent);
+        hash = 31 * hash + (signBit ? 1 : 0);
+        hash = 31 * hash + SignificandSize;
+        return 31 * hash + ExponentSize;
+      }
+    }
+
     #endregion
 
     #region String Representation
