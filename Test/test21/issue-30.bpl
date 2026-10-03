@@ -1,13 +1,19 @@
 // Numeric declaration hashes must be stable in fresh Boogie processes.
 // RUN: %boogie /deterministicLiteralHashes:1 /normalizeNames:1 /emitDebugInformation:0 /prune:0 /proverLog:%t.0.smt2 %s > %t.0.out
+// RUN: %diff %s.expect %t.0.out
 // RUN: %boogie /deterministicLiteralHashes:1 /normalizeNames:1 /emitDebugInformation:0 /prune:0 /proverLog:%t.1.smt2 %s > %t.1.out
+// RUN: %diff %s.expect %t.1.out
 // RUN: %boogie /deterministicLiteralHashes:1 /normalizeNames:1 /emitDebugInformation:0 /prune:0 /proverLog:%t.2.smt2 %s > %t.2.out
+// RUN: %diff %s.expect %t.2.out
 // RUN: %boogie /deterministicLiteralHashes:1 /normalizeNames:1 /emitDebugInformation:0 /prune:0 /proverLog:%t.3.smt2 %s > %t.3.out
+// RUN: %diff %s.expect %t.3.out
 // RUN: %diff %t.0.smt2 %t.1.smt2
 // RUN: %diff %t.0.smt2 %t.2.smt2
 // RUN: %diff %t.0.smt2 %t.3.smt2
 // RUN: %boogie /normalizeDeclarationOrder:0 /deterministicLiteralHashes:0 /emitDebugInformation:0 /prune:0 /proverLog:%t.off0.smt2 %s > %t.off0.out
+// RUN: %diff %s.expect %t.off0.out
 // RUN: %boogie /normalizeDeclarationOrder:0 /deterministicLiteralHashes:1 /emitDebugInformation:0 /prune:0 /proverLog:%t.off1.smt2 %s > %t.off1.out
+// RUN: %diff %s.expect %t.off1.out
 // RUN: %diff %t.off0.smt2 %t.off1.smt2
 const K0: int;
 axiom K0 == 4294967296;
