@@ -20,9 +20,9 @@ axiom x * (y + z) == x + y * z;
 
 axiom x * y + z == (x + y) * z;
 
-axiom x * y * z == x * y * z;
+axiom x * y * z == x * (y * z);
 
-axiom x * y * z * x == x * y * z;
+axiom x * y * (z * x) == x * y * z;
 
 axiom x div y div z == x div (y div z);
 
@@ -68,7 +68,7 @@ axiom x - y - (z - x) == x - y - z;
 
 axiom x + y - z - x + y == 0;
 
-axiom x + y - z - x + y == x + y - (z - (x + y));
+axiom x + y - z - x + y == x + (y - (z - (x + y)));
 
 axiom P ==> Q ==> R <==> P ==> Q ==> R;
 
@@ -82,9 +82,9 @@ axiom (P && Q) || (Q && R);
 
 axiom (P || Q) && (Q || R);
 
-axiom P || Q || Q || R;
+axiom P || Q || (Q || R);
 
-axiom P && Q && Q && R;
+axiom P && Q && (Q && R);
 
 function f(int) : int;
 

@@ -34,11 +34,11 @@ implementation Join(b: bool)
     goto join;
 
   join:
-    assume {:inferred} GlobalFlag && 3 <= x && x < 5 && y == 4 && z == 7;
+    assume {:inferred} GlobalFlag && (3 <= x && x < 5) && y == 4 && z == 7;
     assert y == 4;
     assert z == 7;
     assert GlobalFlag <==> true;
-    assume {:inferred} GlobalFlag && 3 <= x && x < 5 && y == 4 && z == 7;
+    assume {:inferred} GlobalFlag && (3 <= x && x < 5) && y == 4 && z == 7;
     return;
 
   Then:
@@ -68,20 +68,20 @@ implementation Loop()
     goto test;
 
   test:  // cut point
-    assume {:inferred} c == 0 && 0 <= i && i < 11;
-    assume {:inferred} c == 0 && 0 <= i && i < 11;
+    assume {:inferred} c == 0 && (0 <= i && i < 11);
+    assume {:inferred} c == 0 && (0 <= i && i < 11);
     goto Then, Else;
 
   Else:
-    assume {:inferred} c == 0 && 0 <= i && i < 11;
-    assume {:inferred} c == 0 && 0 <= i && i < 11;
+    assume {:inferred} c == 0 && (0 <= i && i < 11);
+    assume {:inferred} c == 0 && (0 <= i && i < 11);
     return;
 
   Then:
-    assume {:inferred} c == 0 && 0 <= i && i < 11;
+    assume {:inferred} c == 0 && (0 <= i && i < 11);
     assume i < 10;
     i := i + 1;
-    assume {:inferred} c == 0 && 1 <= i && i < 11;
+    assume {:inferred} c == 0 && (1 <= i && i < 11);
     goto test;
 }
 

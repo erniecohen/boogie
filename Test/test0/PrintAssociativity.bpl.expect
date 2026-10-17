@@ -1,0 +1,115 @@
+
+const a: int;
+
+const b: int;
+
+const c: int;
+
+const d: int;
+
+const r: real;
+
+const s: real;
+
+const t: real;
+
+const x: real;
+
+const u: \bv8;
+
+const v: \bv8;
+
+const w: \bv8;
+
+const P: bool;
+
+const Q: bool;
+
+const R: bool;
+
+axiom a + (b + c) == d;
+
+axiom a + b + c == d;
+
+axiom a + (b - c) == d;
+
+axiom a + b - c == d;
+
+axiom a - (b + c) == d;
+
+axiom a - b + c == d;
+
+axiom a - (b - c) == d;
+
+axiom a - b - c == d;
+
+axiom a * (b * c) == d;
+
+axiom a * b * c == d;
+
+axiom a * (b div c) == d;
+
+axiom a * b div c == d;
+
+axiom a * (b mod c) == d;
+
+axiom a * b mod c == d;
+
+axiom a div (b * c) == d;
+
+axiom a div b * c == d;
+
+axiom a div (b div c) == d;
+
+axiom a div b div c == d;
+
+axiom a mod (b mod c) == d;
+
+axiom a mod b mod c == d;
+
+axiom r * (s / t) == x;
+
+axiom r * s / t == x;
+
+axiom r / (s * t) == x;
+
+axiom r / s * t == x;
+
+axiom r / (s / t) == x;
+
+axiom r / s / t == x;
+
+axiom (r ** s) ** t == x;
+
+axiom r ** (s ** t) == x;
+
+axiom u ++ (v ++ w) == u ++ v ++ w;
+
+axiom P && (Q && R);
+
+axiom P && Q && R;
+
+axiom P || (Q || R);
+
+axiom P || Q || R;
+
+axiom P <==> (Q <==> R);
+
+axiom P <==> Q <==> R;
+
+axiom P ==> Q ==> R;
+
+axiom (P ==> Q) ==> R;
+
+axiom R ==> Q ==> P;
+
+procedure Assoc(p: bool, q: bool, r: bool);
+
+
+
+implementation Assoc(p: bool, q: bool, r: bool)
+{
+    assert p && (q && r);
+}
+
+
