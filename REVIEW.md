@@ -108,3 +108,26 @@ independence, and solver-log invariance under declaration reordering and renamin
 The query comparison validates the trailing response/cleanup commands separately.
 Batch mode does not send its final pop to the solver, and logging that pop can race
 with disposal; its optional presence must not fail the ordering regression.
+
+## Printing keeps the parentheses that parsing needs
+
+The parser builds a chain of `+`, `-`, `*`, `div`, `mod`, `/`, `&&`, `||` or `<==>` to the
+left, and a chain of `==>` or `**` to the right.  `BinaryOperator.Emit` printed an operand of
+the same binding power without parentheses on the right of `+`, `*`, `&&`, `||` and `<==>`,
+and on the left of `**`, so a printed program could parse to a different tree:
+`a && (b && c)` printed as `a && b && c`, which parses as `(a && b) && c`, and
+`2 * (3 div 2)` as `2 * 3 div 2`, which is `(2 * 3) div 2`.  It now parenthesizes those
+operands, as it already did the right operand of `-`, `div`, `mod` and `/` and the left
+operand of `==>`.
+
+Only printed text changes, such as that of `/print` and `/printInstrumented`, and the
+checksums that `/verifySnapshots:2` and above compute from printed commands.  A program
+verified without being printed and parsed again sends the solver the same queries.
+
+The unit test `PrintAssociativity` parses each binary operator nested both ways, prints it,
+parses the printed text, and checks that the tree and the printed text come back the same.
+`Test/test0/PrintAssociativity.bpl` prints a program with every operator nested both ways,
+prints the printed file again, and compares the first print with its expected output and the
+second with the first.  Two
+expected outputs gain the parentheses: `test0/PrettyPrint.bpl.expect` in 5 lines and
+`aitest0/constants.bpl.expect` in 8.

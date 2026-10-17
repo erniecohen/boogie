@@ -20,3 +20,10 @@ The new opt-in `/deterministicLiteralHashes:1` makes numeric and rounding-mode l
 independent of per-process runtime hash seeds when normalizing declaration order.
 The default remains unchanged. Enabling the option may change solver resource counts
 and outcomes at a resource limit. See `REVIEW.md` for scope and regression coverage.
+
+The printer now keeps the parentheses that the parser needs to rebuild the same tree.  It
+printed `a && (b && c)` as `a && b && c`, which parses as `(a && b) && c`, and
+`2 * (3 div 2)` as `2 * 3 div 2`, which means `(2 * 3) div 2`: the right operand of `+`, `*`,
+`&&`, `||` and `<==>`, and the left operand of `**`, lost its parentheses when it had the same
+binding power.  Printed programs (`/print`) change; a program verified without being printed is
+sent to the solver unchanged.
