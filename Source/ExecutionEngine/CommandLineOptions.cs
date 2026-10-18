@@ -240,6 +240,8 @@ namespace Microsoft.Boogie
 
     public bool DeterministicLiteralHashes { get; set; }
 
+    public bool StructuralLiterals { get; set; }
+
     public bool VerifyAsTasks { get; set; }
 
     public bool ImmediatelyAcceptCommands => StratifiedInlining > 0 || ContractInfer;
@@ -1348,6 +1350,7 @@ namespace Microsoft.Boogie
               ps.CheckBooleanFlag("printPassive", x => UseResolvedProgram.Add(PrintPassiveProgram)) ||
               ps.CheckBooleanFlag("printWithUniqueIds", x => printWithUniqueAstIds = x) ||
               ps.CheckBooleanFlag("printDefinitionAxiomsInPlace", x => PrintDefinitionAxiomsInPlace = x) ||
+              ps.CheckBooleanFlag("structuralLiterals", x => StructuralLiterals = x) ||
               ps.CheckBooleanFlag("verifyAsTasks", x => VerifyAsTasks = x) ||
               ps.CheckBooleanFlag("wait", x => Wait = x) ||
               ps.CheckBooleanFlag("trace", x => Verbosity = CoreOptions.VerbosityLevel.Trace) ||
@@ -1959,6 +1962,15 @@ namespace Microsoft.Boogie
                 as an assertion batch.  Programs with CIVL declarations are not
                 supported, and the type encoding is taken as given: a polymorphic
                 program needs /typeEncoding:a or /typeEncoding:p.
+  /structuralLiterals
+                treat literals by value where Boogie otherwise compares expression
+                objects: the negated guard that desugaring an if or while assumes
+                is folded when the guard is a boolean literal, and passification
+                keeps a variable's incarnation at a join when every predecessor
+                has a literal of the same value, or the same variable, for it.  A
+                program built in memory then gets the same queries as the same
+                program printed and parsed.  This can change the queries, and so
+                the solver's work, of a program built in memory.
   /verifySnapshots:<n>
                 verify several program snapshots (named <filename>.v0.bpl
                 to <filename>.vN.bpl) using verification result caching:
