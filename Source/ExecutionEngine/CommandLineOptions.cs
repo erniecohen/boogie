@@ -240,6 +240,8 @@ namespace Microsoft.Boogie
 
     public bool DeterministicLiteralHashes { get; set; }
 
+    public bool VerifyAsTasks { get; set; }
+
     public bool ImmediatelyAcceptCommands => StratifiedInlining > 0 || ContractInfer;
 
     public bool ProduceUnsatCores => TrackVerificationCoverage ||
@@ -1346,6 +1348,7 @@ namespace Microsoft.Boogie
               ps.CheckBooleanFlag("printPassive", x => UseResolvedProgram.Add(PrintPassiveProgram)) ||
               ps.CheckBooleanFlag("printWithUniqueIds", x => printWithUniqueAstIds = x) ||
               ps.CheckBooleanFlag("printDefinitionAxiomsInPlace", x => PrintDefinitionAxiomsInPlace = x) ||
+              ps.CheckBooleanFlag("verifyAsTasks", x => VerifyAsTasks = x) ||
               ps.CheckBooleanFlag("wait", x => Wait = x) ||
               ps.CheckBooleanFlag("trace", x => Verbosity = CoreOptions.VerbosityLevel.Trace) ||
               ps.CheckBooleanFlag("quiet", x => Verbosity = CoreOptions.VerbosityLevel.Quiet) ||
@@ -1945,6 +1948,17 @@ namespace Microsoft.Boogie
                 1 = perform live variable analysis (default)
                 2 = perform interprocedural live variable analysis
   /noVerify     skip VC generation and invocation of the theorem prover
+  /verifyAsTasks
+                verify through the verification tasks of
+                ExecutionEngine.GetVerificationTasks, the interface through which a
+                front end such as Dafny verifies a program it has built, instead of
+                the command line's own pipeline.  A program then gets the same
+                preparation, the same splits and the same solver queries as there.
+                In particular, type checking does not prune the implementations
+                before blocks are coalesced.  Each split is a task and is reported
+                as an assertion batch.  Programs with CIVL declarations are not
+                supported, and the type encoding is taken as given: a polymorphic
+                program needs /typeEncoding:a or /typeEncoding:p.
   /verifySnapshots:<n>
                 verify several program snapshots (named <filename>.v0.bpl
                 to <filename>.vN.bpl) using verification result caching:

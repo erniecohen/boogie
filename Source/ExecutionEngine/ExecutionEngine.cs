@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using VC;
 using System.Runtime.Caching;
+using System.Reactive.Threading.Tasks;
 using System.Diagnostics;
 using VCGeneration;
 
@@ -142,6 +143,10 @@ namespace Microsoft.Boogie
       if (Options.PrintFile != null) {
         PrintBplFile(Options.PrintFile, program, false, true, Options.PrettyPrint);
       }
+
+      if (Options.VerifyAsTasks) {
+        return await VerifyAsTasks(output, program, bplFileName, cancellationToken);
+      }
       
       PipelineOutcome outcome = ResolveAndTypecheck(program, bplFileName, out var civlTypeChecker);
       if (outcome != PipelineOutcome.ResolvedAndTypeChecked) {
@@ -183,6 +188,98 @@ namespace Microsoft.Boogie
           Debug.Assert(false, "Unreachable code");
           return false;
       }
+    }
+
+    /// <summary>
+    /// /verifyAsTasks.  Verifies the program through GetVerificationTasks, the interface through
+    /// which a front end such as Dafny verifies a program it has built, and reports the results
+    /// as the command line reports its own, one assertion batch per task.  The program is
+    /// resolved, type checked and prepared exactly as there.  In particular the CIVL type checker,
+    /// which ResolveAndTypecheck runs and which prunes every implementation in place before
+    /// blocks are coalesced, does not run, so programs with CIVL declarations are refused.
+    /// </summary>
+    private async Task<bool> VerifyAsTasks(TextWriter output, Program program, string bplFileName,
+      CancellationToken cancellationToken)
+    {
+      if (program.TopLevelDeclarations.Any(d => d is ActionDecl or YieldProcedureDecl or YieldInvariantDecl))
+      {
+        Options.Printer.ErrorWriteLine(output, "{0}: /verifyAsTasks does not support CIVL declarations",
+          GetFileNameForConsole(Options, bplFileName));
+        return false;
+      }
+
+      IReadOnlyList<IVerificationTask> tasks;
+      try
+      {
+        tasks = await GetVerificationTasks(program, cancellationToken);
+      }
+      catch (ArgumentException e)
+      {
+        // GetVerificationTasks reports resolution and type checking errors this way.
+        Options.Printer.ErrorWriteLine(output, "{0}: {1}", GetFileNameForConsole(Options, bplFileName), e.Message);
+        return true;
+      }
+
+      // ResolveAndTypecheck monomorphizes a polymorphic program, or switches a monomorphic one to
+      // the monomorphic encoding; GetVerificationTasks takes the encoding as given, as front ends
+      // that choose /typeEncoding:a or :p expect.
+      if (Options.TypeEncodingMethod == CoreOptions.TypeEncoding.Monomorphic && !MonomorphismChecker.IsMonomorphic(program))
+      {
+        Options.Printer.ErrorWriteLine(output,
+          "{0}: /verifyAsTasks does not monomorphize a polymorphic program; choose /typeEncoding:a or /typeEncoding:p",
+          GetFileNameForConsole(Options, bplFileName));
+        return false;
+      }
+
+      var stats = new PipelineStatistics();
+      if (!Options.Verify)
+      {
+        Options.Printer.WriteTrailer(output, stats);
+        return true;
+      }
+
+      var runs = tasks.Cast<VerificationTask>().Select(async task =>
+      {
+        var start = DateTime.UtcNow;
+        var status = await task.TryRun()!.ToTask(cancellationToken);
+        return (Task: task, Start: start, End: DateTime.UtcNow, Result: (status as Completed)?.Result);
+      }).ToList();
+      try
+      {
+        await Task.WhenAll(runs);
+      }
+      catch (ProverException e)
+      {
+        Options.Printer.ErrorWriteLine(output, "Fatal Error: ProverException: {0}", e.Message);
+        return false;
+      }
+
+      foreach (var implementationRuns in runs.Select(run => run.Result).GroupBy(run => run.Task.Split.Implementation))
+      {
+        var results = implementationRuns.Where(run => run.Result != null).Select(run => run.Result).ToList();
+        var vcOutcome = results.Count < implementationRuns.Count() ? VcOutcome.Inconclusive : VcOutcome.Correct;
+        foreach (var result in results)
+        {
+          vcOutcome = SplitAndVerifyWorker.MergeOutcomes(vcOutcome, result.Outcome);
+        }
+
+        var implementationResult = new ImplementationRunResult(implementationRuns.Key)
+        {
+          Start = implementationRuns.Min(run => run.Start),
+          End = implementationRuns.Max(run => run.End),
+          Elapsed = TimeSpan.FromTicks(results.Sum(result => result.RunTime.Ticks)),
+          ResourceCount = results.Sum(result => result.ResourceCount),
+          VcOutcome = vcOutcome,
+          Errors = results.SelectMany(result => result.CounterExamples).ToList(),
+          RunResults = results
+        };
+        await output.WriteAsync(implementationResult.GetOutput(Options.Printer, this, stats, null));
+        implementationResult.ProcessXml(this);
+      }
+
+      Cce.NonNull(Options.TheProverFactory).Close();
+      Options.Printer.WriteTrailer(output, stats);
+      return true;
     }
 
     public static IList<IList<string>> LookForSnapshots(IList<string> fileNames)

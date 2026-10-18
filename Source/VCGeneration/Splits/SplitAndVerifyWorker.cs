@@ -233,7 +233,7 @@ namespace VC
       }
     }
 
-    private static VcOutcome MergeOutcomes(VcOutcome currentVcOutcome, SolverOutcome newOutcome)
+    public static VcOutcome MergeOutcomes(VcOutcome currentVcOutcome, SolverOutcome newOutcome)
     {
       switch (newOutcome)
       {
