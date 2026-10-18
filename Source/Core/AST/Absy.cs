@@ -601,7 +601,9 @@ namespace Microsoft.Boogie
         stream.WriteLine(this, level, "// " + Comment);
       }
 
-      stream.Write(this, level, "axiom ");
+      // A hideable axiom is printed "hideable", so that "hide" prunes it in the printed program
+      // as it does in this one.
+      stream.Write(this, level, CanHide ? "hideable axiom " : "axiom ");
       EmitAttributes(stream);
       this.Expr.Emit(stream);
       stream.WriteLine(";");
