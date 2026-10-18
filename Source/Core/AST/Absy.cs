@@ -596,12 +596,29 @@ namespace Microsoft.Boogie
 
     public override void Emit(TokenTextWriter stream, int level)
     {
+      Emit(stream, level, null);
+    }
+
+    /// <summary>
+    /// Prints the axiom.  A hideable axiom is printed with "hideable", which the parser reads
+    /// back, so that "hide" prunes it in the printed program as it does in this one.  "owners",
+    /// if not null, are attributes printed before the axiom's own: those that
+    /// /printDefinitionAxiomsInPlace uses to name the functions and constants that own the axiom
+    /// (see DefinitionAxiomOwners).
+    /// </summary>
+    public void Emit(TokenTextWriter stream, int level, QKeyValue owners)
+    {
       if (Comment != null)
       {
         stream.WriteLine(this, level, "// " + Comment);
       }
 
-      stream.Write(this, level, "axiom ");
+      stream.Write(this, level, CanHide ? "hideable axiom " : "axiom ");
+      for (var kv = owners; kv != null; kv = kv.Next)
+      {
+        kv.Emit(stream);
+        stream.Write(" ");
+      }
       EmitAttributes(stream);
       this.Expr.Emit(stream);
       stream.WriteLine(";");
@@ -614,6 +631,7 @@ namespace Microsoft.Boogie
 
     public override void Resolve(ResolutionContext rc)
     {
+      DefinitionAxiomOwners.Attach(this, rc);
       (this as ICarriesAttributes).ResolveAttributes(rc);
       rc.StateMode = ResolutionContext.State.StateLess;
       Expr.Resolve(rc);
@@ -1394,7 +1412,7 @@ namespace Microsoft.Boogie
 
       EmitVitals(stream, level, false);
 
-      if (this.DefinitionAxioms.Any())
+      if (this.DefinitionAxioms.Any() && !stream.Options.PrintDefinitionAxiomsInPlace)
       {
         stream.WriteLine();
         stream.WriteLine(level,"uses {");
@@ -2063,6 +2081,9 @@ namespace Microsoft.Boogie
       }
 
       EmitSignature(stream, true);
+      // With /printDefinitionAxiomsInPlace, the definition axioms are printed at their own
+      // positions, and each names this function as its owner.
+      var printUses = this.DefinitionAxioms.Any() && !stream.Options.PrintDefinitionAxiomsInPlace;
       if (Body != null)
       {
         Contract.Assert(DefinitionBody == null);
@@ -2082,11 +2103,11 @@ namespace Microsoft.Boogie
         stream.WriteLine();
         stream.WriteLine("}");
       }
-      else if (!this.DefinitionAxioms.Any())
+      else if (!printUses)
       {
         stream.WriteLine(";");
       }
-      if (this.DefinitionAxioms.Any())
+      if (printUses)
       {
         stream.WriteLine();
         stream.WriteLine("uses {");

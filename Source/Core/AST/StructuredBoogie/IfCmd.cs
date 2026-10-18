@@ -70,10 +70,15 @@ public class IfCmd : StructuredCmd
 
   public override void Emit(TokenTextWriter stream, int level)
   {
-    stream.Write(level, "if (");
+    stream.Write(level, "if ");
     var ifcmd = this;
     while (true)
     {
+      // The parser reads an if command's attributes between "if" and the guard.  Desugaring
+      // gives them to the jump to the branches, where splitting reads them (a front end marks
+      // the jumps it allows path isolation at), so they are printed.
+      Cmd.EmitAttributes(stream, ifcmd.Attributes);
+      stream.Write("(");
       if (ifcmd.Guard == null)
       {
         stream.Write("*");
@@ -91,7 +96,7 @@ public class IfCmd : StructuredCmd
 
       if (ifcmd.ElseIf != null)
       {
-        stream.Write(level, "else if (");
+        stream.Write(level, "else if ");
         ifcmd = ifcmd.ElseIf;
         continue;
       }

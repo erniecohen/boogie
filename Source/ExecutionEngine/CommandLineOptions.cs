@@ -135,6 +135,8 @@ namespace Microsoft.Boogie
       set => printInstrumented = value;
     }
 
+    public bool PrintDefinitionAxiomsInPlace { get; set; }
+
     public bool InstrumentWithAsserts
     {
       get;
@@ -237,6 +239,10 @@ namespace Microsoft.Boogie
     }
 
     public bool DeterministicLiteralHashes { get; set; }
+
+    public bool StructuralLiterals { get; set; }
+
+    public bool VerifyAsTasks { get; set; }
 
     public bool ImmediatelyAcceptCommands => StratifiedInlining > 0 || ContractInfer;
 
@@ -1343,6 +1349,9 @@ namespace Microsoft.Boogie
               ps.CheckBooleanFlag("printInstrumented", x => printInstrumented = x) ||
               ps.CheckBooleanFlag("printPassive", x => UseResolvedProgram.Add(PrintPassiveProgram)) ||
               ps.CheckBooleanFlag("printWithUniqueIds", x => printWithUniqueAstIds = x) ||
+              ps.CheckBooleanFlag("printDefinitionAxiomsInPlace", x => PrintDefinitionAxiomsInPlace = x) ||
+              ps.CheckBooleanFlag("structuralLiterals", x => StructuralLiterals = x) ||
+              ps.CheckBooleanFlag("verifyAsTasks", x => VerifyAsTasks = x) ||
               ps.CheckBooleanFlag("wait", x => Wait = x) ||
               ps.CheckBooleanFlag("trace", x => Verbosity = CoreOptions.VerbosityLevel.Trace) ||
               ps.CheckBooleanFlag("quiet", x => Verbosity = CoreOptions.VerbosityLevel.Quiet) ||
@@ -1548,6 +1557,17 @@ namespace Microsoft.Boogie
 
     {:checksum <string>}
       Attach a checksum to be used for verification result caching.
+
+  ---- On axioms --------------------------------------------------------------
+
+    {:definition_of_function ""f""}
+    {:used_by_function ""f"", ""g"", ...}
+    {:used_by_constant ""c"", ""d"", ...}
+      Make the axiom the definition axiom of function f, or put it in the
+      uses clauses of the functions f, g, ... or of the constants c, d, ...,
+      as if it were written in each of them.  Resolution attaches the axiom
+      and removes these attributes.  /printDefinitionAxiomsInPlace prints
+      them.
 
   ---- On specs -------------------------------------
 
@@ -1805,6 +1825,15 @@ namespace Microsoft.Boogie
                 with /print option, desugars calls
   /printLambdaLifting
                 with /print option, desugars lambda lifting
+  /printDefinitionAxiomsInPlace
+                print each axiom once, at its own position among the top-level
+                declarations, instead of in the uses clause of each function or
+                constant whose definition axiom it is.  Attributes name those
+                owners: {:definition_of_function ""f""} for f's definition axiom,
+                {:used_by_function ""f""} and {:used_by_constant ""c""} for an axiom
+                in a uses clause.  Resolution attaches the axiom to each named
+                owner, so that the printed program parses into the same
+                declarations, in the same order, with the same pruning edges.
   /freeVarLambdaLifting
                 Boogie's lambda lifting transforms the bodies of lambda
                 expressions into templates with holes. By default, holes
@@ -1922,6 +1951,26 @@ namespace Microsoft.Boogie
                 1 = perform live variable analysis (default)
                 2 = perform interprocedural live variable analysis
   /noVerify     skip VC generation and invocation of the theorem prover
+  /verifyAsTasks
+                verify through the verification tasks of
+                ExecutionEngine.GetVerificationTasks, the interface through which a
+                front end such as Dafny verifies a program it has built, instead of
+                the command line's own pipeline.  A program then gets the same
+                preparation, the same splits and the same solver queries as there.
+                In particular, type checking does not prune the implementations
+                before blocks are coalesced.  Each split is a task and is reported
+                as an assertion batch.  Programs with CIVL declarations are not
+                supported, and the type encoding is taken as given: a polymorphic
+                program needs /typeEncoding:a or /typeEncoding:p.
+  /structuralLiterals
+                treat literals by value where Boogie otherwise compares expression
+                objects: the negated guard that desugaring an if or while assumes
+                is folded when the guard is a boolean literal, and passification
+                keeps a variable's incarnation at a join when every predecessor
+                has a literal of the same value, or the same variable, for it.  A
+                program built in memory then gets the same queries as the same
+                program printed and parsed.  This can change the queries, and so
+                the solver's work, of a program built in memory.
   /verifySnapshots:<n>
                 verify several program snapshots (named <filename>.v0.bpl
                 to <filename>.vN.bpl) using verification result caching:

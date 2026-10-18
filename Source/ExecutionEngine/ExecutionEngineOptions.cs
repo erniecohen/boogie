@@ -19,6 +19,7 @@ public interface ExecutionEngineOptions : HoudiniOptions, ConcurrencyOptions
   string PrintCFGPrefix { get; }
   string CivlDesugaredFile { get; }
   bool CoalesceBlocks { get; }
+  bool VerifyAsTasks { get; }
   ShowEnvironment ShowEnv { get; }
   string Version { get; }
   string Environment { get; }

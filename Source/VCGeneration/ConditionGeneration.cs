@@ -505,6 +505,34 @@ namespace VC
     /// <param name="b"></param>
     /// <param name="block2Incarnation">Gives incarnation maps for b's predecessors.</param>
     /// <returns></returns>
+    /// <summary>
+    /// Whether two predecessors of a join agree on a variable's incarnation.  By default they
+    /// agree when they hold the same expression object.  Under /structuralLiterals they also agree
+    /// when both hold boolean, numeric or other literals of the same value, or identifiers of the
+    /// same variable: a front end may share one object where the same program, printed and
+    /// parsed, has several, and either way both expressions denote the same value.
+    /// </summary>
+    private bool SameIncarnation(Expr a, Expr b)
+    {
+      if (a == b)
+      {
+        return true;
+      }
+
+      if (!Options.StructuralLiterals)
+      {
+        return false;
+      }
+
+      return a switch
+      {
+        LiteralExpr literalA => b is LiteralExpr literalB && Equals(literalA.Val, literalB.Val),
+        IdentifierExpr identifierA => b is IdentifierExpr identifierB && identifierA.Decl != null &&
+                                      identifierA.Decl == identifierB.Decl,
+        _ => false
+      };
+    }
+
     protected Dictionary<Variable, Expr> ComputeIncarnationMap(Block b,
       Dictionary<Block, Dictionary<Variable, Expr>> block2Incarnation)
     {
@@ -564,7 +592,7 @@ namespace VC
           else
           {
             // v in incarnationMap ==> all pred blocks (up to now) all agree on its incarnation
-            if (predMap[v] != incarnationMap[v])
+            if (!SameIncarnation(predMap[v], incarnationMap[v]))
             {
               // conflict!!
               incarnationMap.Remove(v);

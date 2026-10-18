@@ -27,3 +27,32 @@ printed `a && (b && c)` as `a && b && c`, which parses as `(a && b) && c`, and
 `&&`, `||` and `<==>`, and the left operand of `**`, lost its parentheses when it had the same
 binding power.  Printed programs (`/print`) change; a program verified without being printed is
 sent to the solver unchanged.
+
+The printer now writes `hideable` before a hideable axiom.  It dropped the keyword, so in a printed
+program `hide` pruned nothing, and a printed program could verify an assertion that the original
+does not.  Programs without hideable axioms print as before.
+
+The new opt-in `/printDefinitionAxiomsInPlace` prints each axiom once, at its own position, instead
+of in the uses clause of each function or constant that owns it, and names the owners in the
+attributes `{:definition_of_function "f"}`, `{:used_by_function "f", ...}` and
+`{:used_by_constant "c", ...}`, which resolution attaches the axiom to.  A printed program then
+parses into the declarations that were printed, in the same order, with the same owners, where
+uses clauses copied an axiom with two owners and moved definition axioms.  Without the option,
+printing is unchanged apart from `hideable`.  See `REVIEW.md`.
+
+The printer now writes the attributes of an if command, after `if` and after `else if`, and of an
+assignment, after `:=`, where the parser reads them.  It dropped them, so a printed program lost
+marks such as `{:allow_path_isolation}`, at which `{:isolate "paths"}` splits, and an assignment's
+`{:id}`.  Commands without attributes print as before.
+
+The new opt-in `/verifyAsTasks` makes the command line verify through
+`ExecutionEngine.GetVerificationTasks`, the interface through which a front end such as Dafny
+verifies a program, so that a program gets the same preparation, splits and solver queries as
+there.  The command line's own pipeline prunes implementations during type checking, before blocks
+are coalesced, and so can merge blocks that the task pipeline keeps apart.  Programs with CIVL
+declarations are not supported.
+
+The new opt-in `/structuralLiterals` folds the negated literal guards that desugaring assumes, and
+lets passification keep an incarnation at a join when the predecessors hold equal literals or the
+same variable, by value rather than by object.  With it, a program built in memory and the same
+program printed and parsed get the same queries.  See `REVIEW.md`.

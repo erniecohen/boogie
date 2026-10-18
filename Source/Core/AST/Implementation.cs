@@ -525,6 +525,31 @@ public class Implementation : DeclWithFormals
     // nothing to register
   }
 
+  /// <summary>
+  /// /structuralLiterals.  Desugaring a structured if or while assumes Expr.Not(guard), with
+  /// the attribute {:partition}, on the branch where the guard is false.  Expr.Not folds only the
+  /// shared objects Expr.True and Expr.False, so a front end that builds a guard from them gets
+  /// "assume false", and the same program printed and parsed gets "assume !true", which is
+  /// pruned differently.  This folds the negation of any boolean literal in those assumptions,
+  /// so that the result depends on the literal's value and not on which object it is.
+  /// </summary>
+  private void FoldNegatedLiteralGuards()
+  {
+    foreach (var block in Blocks)
+    {
+      foreach (var cmd in block.Cmds)
+      {
+        if (cmd is AssumeCmd assume
+            && assume.Expr is NAryExpr { Fun: UnaryOperator { Op: UnaryOperator.Opcode.Not } } not
+            && not.Args.Count == 1 && not.Args[0] is LiteralExpr { isBool: true } literal
+            && assume.Attributes.FindBoolAttribute("partition"))
+        {
+          assume.Expr = literal.asBool ? Expr.False : Expr.True;
+        }
+      }
+    }
+  }
+
   public override void Resolve(ResolutionContext rc)
   {
     if (Proc != null)
@@ -582,6 +607,10 @@ public class Implementation : DeclWithFormals
       else if (Proc is not ActionDecl)
       {
         rc.StateMode = ResolutionContext.State.Two;
+      }
+      if (rc.Options is { StructuralLiterals: true })
+      {
+        FoldNegatedLiteralGuards();
       }
       foreach (Block b in Blocks)
       {
