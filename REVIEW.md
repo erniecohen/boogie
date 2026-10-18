@@ -131,3 +131,138 @@ prints the printed file again, and compares the first print with its expected ou
 second with the first.  Two
 expected outputs gain the parentheses: `test0/PrettyPrint.bpl.expect` in 5 lines and
 `aitest0/constants.bpl.expect` in 8.
+
+## Printing keeps hideable axioms hideable
+
+`Axiom.Emit` printed `axiom`, the attributes and the expression, and dropped `Axiom.CanHide`,
+which the parser sets from the keyword `hideable` and a front end sets on definition axioms
+(Dafny does, on each function's).  Pruning refuses the edge from a hidden function to an axiom
+only when the axiom is hideable, so in a printed program `hide` pruned nothing: the hidden
+definitions, and everything they reach, came back into the solver's context, and the printed
+program could prove what the original does not.  `Emit` now writes `hideable axiom`, at the top
+level and in a uses clause, where the parser already reads it.
+
+This changes a default, because without it a printed program means something other than the
+program printed.  A program without hideable axioms prints as before, and a program verified
+without being printed and parsed again sends the solver the same queries.
+
+`Test/pruning/PrintHideable.bpl` verifies a program with a hideable axiom at the top level and
+one in a uses clause, prints it, and verifies the printed program: both give 1 verified and 2
+errors, where the printed program used to give 3 verified.
+
+## Printing definition axioms in place
+
+A definition axiom belongs to the functions and constants that hold it
+(`Function.DefinitionAxiom` and `OtherDefinitionAxioms`, `Constant.DefinitionAxioms`), and
+pruning follows an edge from each owner to it.  A front end builds programs that uses clauses
+cannot express.  Dafny gives a nullary datatype constructor `#C` and its identifier constant
+`##C` one axiom, `DatatypeCtorId(#C()) == ##C`, which both own; and it adds a definition axiom
+to the top-level declarations when it makes it, often long after its owner.  The printer prints
+an owned axiom in the uses clause of each owner, and not at its own position, and the parser
+makes a new axiom for each uses clause, just before the owner.  So a printed program has two
+copies of a shared axiom, one live with each owner (and if the axiom has a `{:name}`, the
+printed program does not resolve); its definition axioms move, which changes the order of the
+solver's input under `/normalizeDeclarationOrder:0`; and a function's own definition axiom comes
+back as one of its uses-clause axioms.
+
+The opt-in `/printDefinitionAxiomsInPlace` prints the top-level declarations once each, in
+order, with no uses clauses.  An owned axiom names its owners in attributes, printed before its
+own:
+
+- `{:definition_of_function "f"}`: it is `f`'s `DefinitionAxiom`, as a function body makes it;
+- `{:used_by_function "f", "g", ...}`: it is in their `OtherDefinitionAxioms`;
+- `{:used_by_constant "c", "d", ...}`: it is in their `DefinitionAxioms`.
+
+`Axiom.Resolve` attaches the axiom to each owner named, and removes the attributes, so the
+printed program parses and resolves into the same declarations, in the same order, with the
+same attributes and owners, and so with the same pruning edges.  An undeclared owner is a
+resolution error.  `/printSplitDeclarations` prints a split's declarations the same way under
+the option, naming the owners among them.  An owned axiom that is not a top-level declaration
+is not printed, since pruning never sends it to the solver.  Dafny passes Boogie options through
+`--boogie`, so `--boogie /printDefinitionAxiomsInPlace` reaches the printer of `--bprint`.
+
+The option is off by default, and without it printing is unchanged apart from `hideable`.  It
+changes only printed text.  Verification changes only for a program that writes the owner
+attributes, which Boogie ignored before.
+
+The unit tests `PrintRoundTripTest` build a program in the shape Dafny builds: a shared axiom,
+definition axioms after their owners, hideable definition axioms and a function body.  They print
+it, parse the printed text and resolve it.  With the option, the declarations, their order, their
+attributes and their owners come back the same, printing the result gives the same text, and
+the solver gets the same queries (`SOLVER=noop` logs, `/normalizeDeclarationOrder:0`).  Without
+it, the shared axiom comes back twice and the queries differ.  `Test/pruning/PrintDefinitionAxiomsInPlace.bpl`
+writes the attributes by hand, prints the program with the option, checks that each axiom is
+printed once, in place, with its owners, prints the printed program again and compares, and
+verifies both: each gives 4 verified and 1 error.  One of its procedures verifies only if the
+constant still owns the shared axiom.  No expected output changes.
+
+## Printing keeps the attributes of if commands and assignments
+
+`IfCmd.Emit` printed `if (guard)` and `else if (guard)`, and `AssignCmd.Emit` printed
+`x := e`, and both dropped the command's attributes, although the parser reads them, after `if`
+and after `:=`.  A front end sets them: Dafny marks the if commands of its `if` statements and
+`match` cases with `{:allow_path_isolation}`, which desugaring copies onto the jump to the
+branches and which `{:isolate "paths"}` splits at, and gives assignments an `{:id}`.  So a printed
+program could split differently: an assertion `{:isolate "paths"}` after an `if` statement was
+one task in the printed program and one per path in the original.  The printer now writes
+`if {:attr} (guard)`, `else if {:attr} (guard)` and `x := {:attr} e`.
+
+This changes a default, as `hideable` did: without it a printed program means something other
+than the program printed.  A command without attributes prints as before, and a program verified
+without being printed and parsed again sends the solver the same queries.
+
+`Test/test0/PrintCommandAttributes.bpl` prints a program with attributed if commands and
+assignments, checks the printed attributes, prints the printed program again and compares.  The
+unit test `PrintFidelityTest.PrintedIfAttributesKeepThePathSplits` checks that the printed
+program has the original's path splits and queries.
+
+## Verifying as tasks: `/verifyAsTasks`
+
+A front end such as Dafny verifies a program it has built through
+`ExecutionEngine.GetVerificationTasks`: it resolves and type checks the program, coalesces
+blocks, prepares each implementation, and makes one task per split.  The command line verifies
+through its own pipeline, `ProcessProgram`, whose `ResolveAndTypecheck` also runs the CIVL type
+checker.  That checker prunes every implementation in place (`PruneUnreachableBlocks`, in
+`LinearTypeChecker.VisitImplementation`): it cuts the edges out of blocks that assume `false`, and
+reorders the blocks, before blocks are coalesced.  A join reached from a branch that ends in
+`assume false` then has a single predecessor and is merged into the other branch, where the task
+pipeline keeps it a block of its own.  So the command line sends the solver different queries for
+the same program.
+
+The opt-in `/verifyAsTasks` makes the command line verify through `GetVerificationTasks` and run
+the tasks, and report the results as it reports its own: per implementation, with the same
+outcome, error and trailer messages, and per split as an assertion batch in `/xml`.  A program then
+gets the preparation, the splits and the queries it gets from a front end; a split's prover log is
+named `<implementation>_split<n>`, as there.  It refuses a program with CIVL declarations, which
+the task pipeline does not support, and a polymorphic program under the monomorphic encoding,
+because `GetVerificationTasks` takes the encoding as given where `ResolveAndTypecheck` would
+monomorphize the program.  Without the option the command line is unchanged.
+
+`Test/commandline/VerifyAsTasks.bpl` verifies a program with and without the option and checks
+that both report the same error and the same counts.  The unit tests
+`PrintFidelityTest.VerifyAsTasks*` check that the option sends the queries of the tasks, that
+without it the command line's queries differ as before, that it counts as the command line does,
+and that it refuses CIVL and unmonomorphized polymorphic programs.
+
+## Structural literals: `/structuralLiterals`
+
+Two decisions depend on which expression object a literal is, and a printed program cannot say.
+Desugaring a structured `if` or `while` assumes `Expr.Not(guard)` on the branch where the guard is
+false, and `Expr.Not` folds only the shared objects `Expr.True` and `Expr.False`: a front end that
+guards with `Expr.True` gets `assume false`, a dead branch, and the same program printed and
+parsed gets `assume !true`, which is not pruned.  And passification keeps a variable's incarnation
+at a join only if every predecessor holds the same expression object for it: a front end that
+assigns the shared `Expr.True` on two branches keeps the variable `true`, and the printed program,
+with two parsed literals, gets a new incarnation and an equation on each branch.
+
+The opt-in `/structuralLiterals` makes both decisions by value.  Resolution folds the negation of a
+boolean literal in the assumptions with the attribute `{:partition}` that desugaring makes, and the
+join treats two literals of the same value, or two identifiers of the same variable, as the same
+incarnation.  Both are sound: a folded assumption is equivalent to the original, and two
+expressions that the join identifies denote the same value.  Passed to both, a front end's
+in-memory program and its printed form get the same queries.  The option can change the queries,
+and so the solver's work, of a program built in memory, and it changes nothing without it.
+
+The unit tests `PrintFidelityTest.StructuralLiteralsMakeThePrintedProgramSendTheSameQueries` build
+the two cases in memory with `Expr.True`, print them, and check that with the option the printed
+program sends the same queries, and that without it the queries differ, as before.
