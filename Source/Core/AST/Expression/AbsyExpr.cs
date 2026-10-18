@@ -2183,10 +2183,15 @@ namespace Microsoft.Boogie
       int opBindingStrength;
       bool fragileLeftContext = false; // false means "allow same binding power on left without parens"
       bool fragileRightContext = false; // false means "allow same binding power on right without parens"
+      // The parser builds a chain of +, -, *, div, mod, /, &&, || or <==> to the left, and a chain
+      // of ==> or ** to the right, so printing must parenthesize an operand of the same binding power
+      // on the other side: the right of a left-associative operator, the left of a right-associative
+      // one.  Otherwise the printed program reparses to a different tree.
       switch (this.op)
       {
         case Opcode.Add:
           opBindingStrength = 0x40;
+          fragileRightContext = true;
           break;
         case Opcode.Sub:
           opBindingStrength = 0x40;
@@ -2194,6 +2199,7 @@ namespace Microsoft.Boogie
           break;
         case Opcode.Mul:
           opBindingStrength = 0x50;
+          fragileRightContext = true;
           break;
         case Opcode.Div:
           opBindingStrength = 0x50;
@@ -2209,7 +2215,7 @@ namespace Microsoft.Boogie
           break;
         case Opcode.Pow:
           opBindingStrength = 0x60;
-          fragileRightContext = true;
+          fragileLeftContext = fragileRightContext = true;
           break;
         case Opcode.Eq:
         case Opcode.Neq:
@@ -2222,9 +2228,11 @@ namespace Microsoft.Boogie
           break;
         case Opcode.And:
           opBindingStrength = 0x20;
+          fragileRightContext = true;
           break;
         case Opcode.Or:
           opBindingStrength = 0x21;
+          fragileRightContext = true;
           break;
         case Opcode.Imp:
           opBindingStrength = 0x10;
@@ -2232,6 +2240,7 @@ namespace Microsoft.Boogie
           break;
         case Opcode.Iff:
           opBindingStrength = 0x00;
+          fragileRightContext = true;
           break;
         default:
           System.Diagnostics.Debug.Fail("unknown binary operator: " + op.ToString());
