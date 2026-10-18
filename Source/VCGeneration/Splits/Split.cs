@@ -133,6 +133,13 @@ namespace VC
           return;
         }
 
+        if (writer.Options.PrintDefinitionAxiomsInPlace)
+        {
+          DefinitionAxiomOwners.EmitInPlace(writer, PrunedDeclarations);
+          writer.Close();
+          return;
+        }
+
         var functionAxioms =
           PrunedDeclarations.OfType<Function>().Where(f => f.DefinitionAxioms.Any()).SelectMany(f => f.DefinitionAxioms);
         var constantAxioms =

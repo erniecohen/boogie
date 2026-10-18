@@ -28,6 +28,11 @@ public class Program : Absy
   {
     Contract.Requires(stream != null);
     stream.SetToken(this);
+    if (stream.Options.PrintDefinitionAxiomsInPlace)
+    {
+      DefinitionAxiomOwners.EmitInPlace(stream, this.topLevelDeclarations);
+      return;
+    }
     var functionAxioms = 
       this.Functions.Where(f => f.DefinitionAxioms.Any()).SelectMany(f => f.DefinitionAxioms);
     var constantAxioms = 

@@ -135,6 +135,8 @@ namespace Microsoft.Boogie
       set => printInstrumented = value;
     }
 
+    public bool PrintDefinitionAxiomsInPlace { get; set; }
+
     public bool InstrumentWithAsserts
     {
       get;
@@ -1343,6 +1345,7 @@ namespace Microsoft.Boogie
               ps.CheckBooleanFlag("printInstrumented", x => printInstrumented = x) ||
               ps.CheckBooleanFlag("printPassive", x => UseResolvedProgram.Add(PrintPassiveProgram)) ||
               ps.CheckBooleanFlag("printWithUniqueIds", x => printWithUniqueAstIds = x) ||
+              ps.CheckBooleanFlag("printDefinitionAxiomsInPlace", x => PrintDefinitionAxiomsInPlace = x) ||
               ps.CheckBooleanFlag("wait", x => Wait = x) ||
               ps.CheckBooleanFlag("trace", x => Verbosity = CoreOptions.VerbosityLevel.Trace) ||
               ps.CheckBooleanFlag("quiet", x => Verbosity = CoreOptions.VerbosityLevel.Quiet) ||
@@ -1548,6 +1551,17 @@ namespace Microsoft.Boogie
 
     {:checksum <string>}
       Attach a checksum to be used for verification result caching.
+
+  ---- On axioms --------------------------------------------------------------
+
+    {:definition_of_function ""f""}
+    {:used_by_function ""f"", ""g"", ...}
+    {:used_by_constant ""c"", ""d"", ...}
+      Make the axiom the definition axiom of function f, or put it in the
+      uses clauses of the functions f, g, ... or of the constants c, d, ...,
+      as if it were written in each of them.  Resolution attaches the axiom
+      and removes these attributes.  /printDefinitionAxiomsInPlace prints
+      them.
 
   ---- On specs -------------------------------------
 
@@ -1805,6 +1819,15 @@ namespace Microsoft.Boogie
                 with /print option, desugars calls
   /printLambdaLifting
                 with /print option, desugars lambda lifting
+  /printDefinitionAxiomsInPlace
+                print each axiom once, at its own position among the top-level
+                declarations, instead of in the uses clause of each function or
+                constant whose definition axiom it is.  Attributes name those
+                owners: {:definition_of_function ""f""} for f's definition axiom,
+                {:used_by_function ""f""} and {:used_by_constant ""c""} for an axiom
+                in a uses clause.  Resolution attaches the axiom to each named
+                owner, so that the printed program parses into the same
+                declarations, in the same order, with the same pruning edges.
   /freeVarLambdaLifting
                 Boogie's lambda lifting transforms the bodies of lambda
                 expressions into templates with holes. By default, holes
