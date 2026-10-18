@@ -451,6 +451,9 @@ namespace Microsoft.Boogie
       }
 
       stream.Write(" := ");
+      // The parser reads an assignment's attributes after ":=", such as the {:id} a front end
+      // gives it.
+      EmitAttributes(stream, Attributes);
 
       sep = "";
       foreach (Expr e in Rhss)
