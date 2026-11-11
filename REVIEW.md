@@ -366,7 +366,8 @@ The state the context's checks start from comes back to what it was after the ba
 - The named assumes of `/trackVerificationCoverage`, which decide whether an unsat core is asked
   for: they are reset to the background's.
 
-A prover that has not finished a check of its context, or had errors, sets it up again.
+A prover that has not finished a check of its context, or had errors, sets it up again, and so
+does the batch mode prover, which does not restart contexts.
 
 Without the option, which checker verifies a split does not matter, so the pool hands out the last
 one made available.  Under it, a checker that comes back goes to a waiting split of the

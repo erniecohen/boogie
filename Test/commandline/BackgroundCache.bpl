@@ -1,3 +1,4 @@
+// UNSUPPORTED: batch_mode
 // RUN: %boogie /typeEncoding:a /prune:1 /vcsSplitOnEveryAssert /proverOpt:SOLVER=noop /proverLog:"%t.base.smt2" "%s" > "%t.base"
 // RUN: %boogie /typeEncoding:a /prune:1 /vcsSplitOnEveryAssert /proverOpt:SOLVER=noop /proverLog:"%t.cached.smt2" /cacheBackground "%s" > "%t.cached"
 // RUN: cmp "%t.base.smt2" "%t.cached.smt2"
@@ -12,7 +13,8 @@
 // the whole command stream of one prover, without and with Z3's answers, with the named assumes and
 // unsat cores of /trackVerificationCoverage.  The assertions of each procedure use f and g, so its
 // splits have the same declarations; Q has P's and an SMT option of its own, which its contexts
-// must send.
+// must send.  The batch mode prover does not restart contexts and sets every one up, as without the
+// option.
 function {:inline} twice(x: int): int { x + x }
 function g(x: int): int;
 axiom {:id "gAx"} (forall x: int :: {g(x)} g(x) > x);
