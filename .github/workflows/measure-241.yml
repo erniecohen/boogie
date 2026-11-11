@@ -98,7 +98,7 @@ jobs:
           dotnet dafny-new/DafnyDriver.dll $common --boogie /proverOpt:SOLVER=noop --solver-log "$PWD/logs/@PROC@.smt2" > logs.txt 2>&1 || true
           tail -5 logs.txt; du -sh logs; ls logs | wc -l
           python3 new/.github/measure/nu.py logs | tee nu.md
-          python3 new/.github/measure/z3bg.py ./z3 logs 200 60 | tee z3bg.md
+          python3 new/.github/measure/z3bg.py ./z3 logs 50 20 | tee z3bg.md
           rm -rf logs
       - name: Summary
         if: always()
