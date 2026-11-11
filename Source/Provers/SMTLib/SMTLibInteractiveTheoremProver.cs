@@ -53,7 +53,7 @@ namespace Microsoft.Boogie.SMTLib
     private void FlushAndCacheCommons()
     {
       FlushAxioms();
-      CachedCommon ??= common.ToString();
+      CachedCommonLength ??= common.Length;
     }
 
     public override int FlushAxiomsToTheoremProver()
@@ -119,7 +119,7 @@ namespace Microsoft.Boogie.SMTLib
         DeclCollector.Pop();
         if (hasReset)
         {
-          common = new StringBuilder(CachedCommon);
+          common.Length = CachedCommonLength!.Value;
           hasReset = false;
         }
 
@@ -176,7 +176,7 @@ namespace Microsoft.Boogie.SMTLib
       // cache of the previous context must not survive into it: Check would put it back as the
       // background, and the next Reset would send the solver the previous context's declarations
       // and axioms instead of this one's.
-      CachedCommon = null;
+      CachedCommonLength = null;
       CachedAxBuilder = null;
       SetupAxiomBuilder(gen);
       Axioms.Clear();
