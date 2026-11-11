@@ -1,23 +1,23 @@
 # Measures the Dafny-process cost of setting up splits (erniecohen/dafny#241, cause 2) on
-# Dafny's standard library, before and after this branch, under workstation and server GC.
+# Dafny's standard library, before and after /cacheBackground, under workstation and server GC.
 #
 # Dafny is the upstream 4.11.0 release from nuget.org, which builds against Boogie 3.5.5, with
-# its Boogie assemblies replaced by this line's: `base` is v3.5.5+review.a7d160a7 (7873c81),
-# the Boogie that erniecohen/dafny review/4.11.0 pins; `fix` is this branch without options;
-# `new` is this branch with `--boogie /cacheUsedTypes --boogie /lockFreeExpansion`.  Std is the
-# program in the release's DafnyStandardLibraries.doo, with the options of its manifest.
+# its Boogie assemblies replaced by this line's: `base` is review/3.5.5 at 45a8869 with
+# /cacheUsedTypes /lockFreeExpansion; `fix` is this branch with the same options; `new` is this
+# branch with /cacheBackground too.  Std is the program in the release's
+# DafnyStandardLibraries.doo, with the options of its manifest.
 name: measure-241
 
 on:
   workflow_dispatch:
   push:
-    branches: [ perf/241-split-setup ]
+    branches: [ perf/241-background-cache ]
     paths: [ '.github/workflows/measure-241.yml', '.github/measure/**' ]
 
 jobs:
   measure:
     runs-on: ubuntu-22.04
-    timeout-minutes: 340
+    timeout-minutes: 300
     defaults:
       run:
         shell: bash --noprofile --norc -o pipefail {0}
@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { path: new, fetch-depth: 0 }
       - uses: actions/checkout@v4
-        with: { path: base, ref: 7873c81883456dfc98fabd84b5d3b6d132417219 }
+        with: { path: base, ref: 45a8869bb43456f126577f5ba6fd24725ed6e4d9 }
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: '8.0.x' }
       - name: Tools
@@ -49,16 +49,17 @@ jobs:
             cp -r pkg/tools/net8.0/any dafny-$v
             cp $v/Source/BoogieDriver/bin/Release/net8.0/Boogie.*.dll dafny-$v/
           done
-          mkdir std && cd std && unzip -q ../pkg/tools/net8.0/any/DafnyStandardLibraries.doo && cat manifest.toml && cp program ../std.dfy
-      - name: Sanity
+          mkdir std && cd std && unzip -q ../pkg/tools/net8.0/any/DafnyStandardLibraries.doo && cp program ../std.dfy
+      - name: Restarted contexts
         run: |
-          timeout 900 dotnet dafny-new/DafnyDriver.dll verify std.dfy --cores $(nproc) --solver-path ./z3 --standard-libraries false --enforce-determinism --reads-clauses-on-methods --track-print-effects --unicode-char true --allow-warnings --boogie /proverOpt:SOLVER=noop > sanity.txt 2>&1 || echo "exit $? (4: checks not verified, as the noop solver answers unknown)"
-          head -20 sanity.txt; echo ...; tail -20 sanity.txt
+          timeout 900 dotnet dafny-new/DafnyDriver.dll verify std.dfy --cores $(nproc) --solver-path ./z3 --standard-libraries false --enforce-determinism --reads-clauses-on-methods --track-print-effects --unicode-char true --allow-warnings --boogie /proverOpt:SOLVER=noop --boogie /cacheUsedTypes --boogie /lockFreeExpansion --boogie /cacheBackground --boogie /trace > trace.txt 2>&1 || true
+          grep "Background cache\|Dafny program verifier finished" trace.txt | tee restarts.md
       - name: Run variants
         run: |
           cores=$(nproc)
           common="verify std.dfy --cores $cores --solver-path ./z3 --standard-libraries false --enforce-determinism --reads-clauses-on-methods --track-print-effects --unicode-char true --allow-warnings --verification-time-limit 60"
           opts="--boogie /cacheUsedTypes --boogie /lockFreeExpansion"
+          cache="--boogie /cacheBackground"
           noop="--boogie /proverOpt:SOLVER=noop"
           run() { # name gc dafny extra...
             name=$1; gc=$2; d=$3; shift 3
@@ -67,22 +68,22 @@ jobs:
           }
           # Dafny-process work alone: the noop solver answers every check at once.
           for rep in 1 2; do for gc in 0 1; do
-            run noop-base-gc$gc-r$rep $gc base $noop
-            run noop-fix-gc$gc-r$rep $gc new $noop
-            run noop-new-gc$gc-r$rep $gc new $noop $opts
+            run noop-base-gc$gc-r$rep $gc base $noop $opts
+            run noop-fix-gc$gc-r$rep $gc new $noop $opts
+            run noop-new-gc$gc-r$rep $gc new $noop $opts $cache
           done; done
           # With Z3.
           for gc in 0 1; do
-            run z3-base-gc$gc $gc base
-            run z3-new-gc$gc $gc new $opts
+            run z3-base-gc$gc $gc base $opts
+            run z3-new-gc$gc $gc new $opts $cache
           done
       - name: Allocation, GC pauses and allocation sites
         run: |
           cores=$(nproc)
-          common="verify std.dfy --cores $cores --solver-path ./z3 --standard-libraries false --enforce-determinism --reads-clauses-on-methods --track-print-effects --unicode-char true --allow-warnings --boogie /proverOpt:SOLVER=noop"
+          common="verify std.dfy --cores $cores --solver-path ./z3 --standard-libraries false --enforce-determinism --reads-clauses-on-methods --track-print-effects --unicode-char true --allow-warnings --boogie /proverOpt:SOLVER=noop --boogie /cacheUsedTypes --boogie /lockFreeExpansion"
           dotnet build new/.github/measure/AllocSites -c Release -v q -o allocsites
           for gc in 0 1; do for v in base new; do
-            o=""; [ $v = new ] && o="--boogie /cacheUsedTypes --boogie /lockFreeExpansion"
+            o=""; [ $v = new ] && o="--boogie /cacheBackground"
             # The runtime's own EventPipe session: GC events and allocation samples (verbose GC keyword).
             DOTNET_gcServer=$gc DOTNET_EnableEventPipe=1 DOTNET_EventPipeOutputPath=$PWD/alloc-$v-gc$gc.nettrace \
               DOTNET_EventPipeConfig='Microsoft-Windows-DotNETRuntime:0x1:5' \
@@ -90,22 +91,12 @@ jobs:
             dotnet allocsites/AllocSites.dll alloc-$v-gc$gc.nettrace 20 > alloc-$v-gc$gc.md || true
             head -40 alloc-$v-gc$gc.md
           done; done
-      - name: N against U, and Z3 time on the background
-        run: |
-          cores=$(nproc)
-          common="verify std.dfy --cores $cores --solver-path ./z3 --standard-libraries false --enforce-determinism --reads-clauses-on-methods --track-print-effects --unicode-char true --allow-warnings --verification-time-limit 60"
-          mkdir logs
-          dotnet dafny-new/DafnyDriver.dll $common --boogie /proverOpt:SOLVER=noop --solver-log "$PWD/logs/@PROC@.smt2" > logs.txt 2>&1 || true
-          tail -5 logs.txt; du -sh logs; ls logs | wc -l
-          python3 new/.github/measure/nu.py logs | tee nu.md
-          python3 new/.github/measure/z3bg.py ./z3 logs 50 20 | tee z3bg.md
-          rm -rf logs
       - name: Summary
         if: always()
         run: |
           python3 new/.github/measure/summary.py runs.txt > summary.md || true
           cat summary.md
-          { echo "## Runs"; cat summary.md; echo; echo "## N against U"; cat nu.md; echo; echo "## Z3 on the background"; cat z3bg.md
+          { echo "## Runs"; cat summary.md; echo; echo "## Restarted contexts"; cat restarts.md
             for f in alloc-*.md; do echo; echo "## $f"; head -60 $f; done; } >> $GITHUB_STEP_SUMMARY || true
       - uses: actions/upload-artifact@v4
         if: always()
@@ -115,8 +106,6 @@ jobs:
             runs.txt
             time-*.txt
             out-*.txt
-            sanity.txt
+            restarts.md
             summary.md
-            nu.md
-            z3bg.md
             alloc-*.md

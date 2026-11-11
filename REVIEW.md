@@ -334,3 +334,58 @@ with declaration normalization, without it and with a random seed, and with and 
 `/vcsSplitOnEveryAssert`, through the task pipeline and through the command line.  They fail if
 the cached types come in another order.  `Test/commandline/SplitSetup.bpl` compares the command
 streams of the command line with `cmp`.
+
+## Restarting a context instead of setting it up again: `/cacheBackground`
+
+Under pruning, `Checker.Target` sets a prover up for every split.  It does a `FullReset`, then
+translates the split's pruned declarations into the prover's context.  The split's first check
+then erases and prints them as the background, every declaration and axiom sent before its query.
+On Dafny's standard library, 7,611 checks had 1,916 distinct backgrounds: the splits of an
+implementation mostly share their pruned declarations.  The background was 86% of the bytes sent.
+
+Under the opt-in `/cacheBackground`, a checker keeps the key of the context its prover holds:
+
+- the program and the prover's context;
+- the random seed;
+- the basic types of the type encoding;
+- the declarations in the order they are declared, which pruning, hide and reveal decide;
+- the implementation's own SMT options, which the background sends.
+
+When a split's key is the one held, the checker does not set the context up again.  The prover
+restarts it instead (`TryRestartContext`): it sends the commands of a `FullReset`, then replays
+exactly what the context's first check sent from there on: the commands before the check's `Reset`
+and the background.  It sends and logs them as before, so the solver and the log get the same
+bytes.
+
+The state the context's checks start from comes back to what it was after the background:
+
+- The namer: each check already uses a copy of the context's namer (`ResetNamer`).
+- The type axiom builder: each check already uses a clone of `CachedAxBuilder`.
+- The declarations collector: `MarkBaseline` and `RestoreBaseline` forget what is known or pending
+  since the background, where a check's own `Push` and `Pop` leave what its counterexamples add.
+- The named assumes of `/trackVerificationCoverage`, which decide whether an unsat core is asked
+  for: they are reset to the background's.
+
+A prover that has not finished a check of its context, or had errors, sets it up again.
+
+Without the option, which checker verifies a split does not matter, so the pool hands out the last
+one made available.  Under it, a checker that comes back goes to a waiting split of the
+implementation it last verified, if there is one.  Else it goes to the first waiting split whose
+implementation no checker is verifying.  An implementation's splits then tend to run one after the
+other on one prover, and its context can be restarted.  On `Test/dafny/Seq.bpl` split on every
+assertion (612 splits) through the tasks with 4 cores, 359 contexts are restarted with this and 179
+without it; one prover restarts 364.
+
+The unit tests `BackgroundCacheTest` compare every log of a program, without and with the option,
+through the tasks and through the command line.  The program has implementations with several
+splits of the same declarations, two with the same declarations and different SMT options, hide and
+reveal, a seed of its own and a failing assertion.  The configurations are:
+
+- both encodings;
+- with declaration normalization, without it and with a seed;
+- with `/trackVerificationCoverage` and with 4 cores;
+- with pruning off.
+
+The tests check that contexts were restarted, and they fail if the key leaves out the SMT options.
+`Test/commandline/BackgroundCache.bpl` compares the whole command stream with `cmp`, with the noop
+solver and with Z3, whose unsat cores `/trackVerificationCoverage` asks for.

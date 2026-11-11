@@ -1,0 +1,7 @@
+BackgroundCache.bpl(41,3): Error: this assertion could not be proved
+Execution trace:
+    BackgroundCache.bpl(40,3): anon0
+
+Boogie program verifier finished with 2 verified, 1 error
+Boogie program verifier finished with 2 verified, 1 error
+Background cache: 5 contexts restarted, 3 set up

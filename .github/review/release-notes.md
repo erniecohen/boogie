@@ -67,3 +67,9 @@ The new opt-in `/cacheUsedTypes` collects the basic types of a split's type enco
 of each declaration's types, instead of visiting the whole program for every split, and the new
 opt-in `/lockFreeExpansion` expands `{:inline}` functions without a lock that made provers wait
 for each other.  Neither changes what the solver gets.  See `REVIEW.md`.
+
+The new opt-in `/cacheBackground` restarts a prover's context for a split whose pruned declarations,
+seed, type encoding types and SMT options are those of the context it holds, instead of
+translating, erasing and printing them again, and sends the solver the same commands, byte for
+byte.  The checker pool then lets an implementation's splits run one after the other on one prover.
+See `REVIEW.md`.
