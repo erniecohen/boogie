@@ -91,6 +91,7 @@ namespace Microsoft.Boogie
     bool StructuralLiterals { get; }
     bool CacheUsedTypes => false;
     bool LockFreeExpansion => false;
+    bool CacheBackground => false;
     XmlSink XmlSink { get; }
     uint VcsFinalAssertTimeout { get; }
     uint VcsKeepGoingTimeout { get; }

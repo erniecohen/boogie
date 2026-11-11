@@ -16,6 +16,21 @@ namespace Microsoft.Boogie.SMTLib
   public class SMTLibInteractiveTheoremProver : SMTLibProcessTheoremProver
   {
     private bool processNeedsRestart;
+
+    // /cacheBackground.  A context's first check records every command sent between the end of the
+    // FullReset and its query: those sent before the check's Reset (afterFullReset) and the
+    // background its check sends (background).  Restarting the context sends the FullReset's own
+    // commands and replays them, and the context's state comes back to what it was after the
+    // background: the namer and type axiom builder it caches anyway, the declarations collector's
+    // baseline, and the named assumes.
+    private enum ContextPhase { None, AfterFullReset, BeforeFirstCheck, Recorded, Restarted }
+    private ContextPhase contextPhase = ContextPhase.None;
+    private List<string> afterFullReset;
+    private List<string> background;
+    private List<string> recording;
+    private VCExprVar[] namedAssumesBaseline;
+    private bool lastCheckCompleted;
+
     private ScopedNamer commonNamer;
     private ScopedNamer finalNamer;
     private int resourceCount;
@@ -76,7 +91,8 @@ namespace Microsoft.Boogie.SMTLib
         if (options.LogFilename != null && currentLogFile == null)
         {
           currentLogFile = OpenOutputFile(descriptiveName);
-          await currentLogFile.WriteAsync(common.ToString());
+          // After a restart the background is replayed below, where a new context sends it.
+          await currentLogFile.WriteAsync(contextPhase == ContextPhase.Restarted ? "" : common.ToString());
         }
 
         if (HadErrors)
@@ -85,8 +101,31 @@ namespace Microsoft.Boogie.SMTLib
           processNeedsRestart = true;
         }
 
+        lastCheckCompleted = false;
+        if (contextPhase == ContextPhase.Restarted)
+        {
+          foreach (var command in background)
+          {
+            SendSanitized(command);
+          }
+          contextPhase = ContextPhase.Recorded;
+        }
+
+        var record = contextPhase == ContextPhase.BeforeFirstCheck;
+        if (record)
+        {
+          recording = new List<string>();
+        }
         PrepareCommon();
         FlushAndCacheCommons();
+        if (record)
+        {
+          background = recording;
+          recording = null;
+          namedAssumesBaseline = NamedAssumes.ToArray();
+          DeclCollector.MarkBaseline();
+          contextPhase = ContextPhase.Recorded;
+        }
 
         OptimizationRequests.Clear();
 
@@ -125,6 +164,7 @@ namespace Microsoft.Boogie.SMTLib
 
         var result = await CheckSat(cancellationToken, errorLimit);
         SendThisVC("(pop 1)");
+        lastCheckCompleted = true;
 
         return result;
       }
@@ -137,9 +177,16 @@ namespace Microsoft.Boogie.SMTLib
     public override async Task Reset(VCExpressionGenerator generator)
     {
       gen = generator;
+      if (contextPhase == ContextPhase.AfterFullReset)
+      {
+        afterFullReset = recording;
+        recording = null;
+        contextPhase = ContextPhase.BeforeFirstCheck;
+      }
       SendThisVC("(reset)");
       await RecoverIfProverCrashedAfterReset();
-      if (0 < common.Length)
+      // After a FullReset the background is empty here; after a restart the check replays it.
+      if (0 < common.Length && contextPhase != ContextPhase.Restarted)
       {
         var c = common.ToString();
         Process.Send(c);
@@ -188,6 +235,38 @@ namespace Microsoft.Boogie.SMTLib
       DeclCollector.Reset();
       NamedAssumes.Clear();
       SendThisVC("; did a full reset");
+      contextPhase = ContextPhase.AfterFullReset;
+      recording = new List<string>();
+      afterFullReset = null;
+      background = null;
+    }
+
+    public override bool TryRestartContext(VCExpressionGenerator generator)
+    {
+      if (contextPhase != ContextPhase.Recorded || !lastCheckCompleted || HadErrors || afterFullReset == null
+          || !DeclCollector.RestoreBaseline())
+      {
+        return false;
+      }
+      // The commands of FullReset, which leaves the context as it is.
+      gen = generator;
+      SendThisVC("(reset)");
+      if (options.Solver == SolverKind.Z3 || options.Solver == SolverKind.NoOpWithZ3Options) {
+        SendThisVC("(set-option :" + Z3.RlimitOption + " 0)");
+      }
+      finalNamer = null;
+      hasReset = true;
+      Axioms.Clear();
+      TypeDecls.Clear();
+      NamedAssumes.Clear();
+      NamedAssumes.UnionWith(namedAssumesBaseline);
+      SendThisVC("; did a full reset");
+      foreach (var command in afterFullReset)
+      {
+        SendSanitized(command);
+      }
+      contextPhase = ContextPhase.Restarted;
+      return true;
     }
 
     [NoDefaultContract]
@@ -654,6 +733,13 @@ namespace Microsoft.Boogie.SMTLib
         common.Append(s).Append("\r\n");
       }
 
+      recording?.Add(s);
+      SendSanitized(s);
+    }
+
+    /// <summary>Sends and logs a command that is already sanitized, as Send does.</summary>
+    private void SendSanitized(string s)
+    {
       if (Process != null)
       {
         Process.Send(s);

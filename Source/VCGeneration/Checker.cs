@@ -70,7 +70,7 @@ namespace Microsoft.Boogie
         Pool.AddChecker(this);
       }
       catch(TimeoutException) {
-        Pool.CheckerDied();
+        Pool.CheckerDied(this);
         Close();
       }
     }
@@ -138,10 +138,66 @@ namespace Microsoft.Boogie
         outputExn = default;
         handler = default;
         SolverOptions.UsedTypes = usedTypes;
+        var seed = 1 < Options.RandomizeVcIterations ? split.NextRandom() : split.RandomSeed;
+        List<Declaration> declarations;
+        // TODO(wuestholz): Is this lock necessary?
+        lock (prog.TopLevelDeclarations)
+        {
+          declarations = GetReorderedDeclarations(split.PrunedDeclarations, seed).ToList();
+        }
+
+        LastImplementation = split.Implementation;
+        var key = Options.CacheBackground
+          ? new ContextKey(prog, ctx, seed, usedTypes, declarations, split.Implementation.GetExtraSMTOptions().ToList())
+          : null;
+        if (key != null && key.Equals(contextKey))
+        {
+          SolverOptions.RandomSeed = seed;
+          Program = prog;
+          if (TheoremProver.TryRestartContext(gen))
+          {
+            Interlocked.Increment(ref ContextRestarts);
+            return;
+          }
+        }
+
+        Interlocked.Increment(ref ContextSetups);
+        contextKey = key;
         TheoremProver.FullReset(gen);
         ctx.Reset();
-        Setup(prog, ctx, split);
+        SolverOptions.RandomSeed = seed;
+        Setup(prog, ctx, declarations);
       }
+    }
+
+    /// <summary>The implementation of the split the checker was last targeted at.</summary>
+    public Implementation LastImplementation { get; private set; }
+
+    /// <summary>The numbers of contexts set up from their declarations and restarted under /cacheBackground.</summary>
+    public static int ContextSetups, ContextRestarts;
+
+    // The context the prover holds: what decides the commands that set it up and its background.
+    private ContextKey contextKey;
+
+    /// <summary>
+    /// What decides the commands that set up a context and send its background: the program and the
+    /// prover's context, the random seed (the solver's seed option and the names), the basic types of
+    /// the type encoding, the declarations in the order they are declared, which pruning and hide and
+    /// reveal decide, and the implementation's own SMT options.  The prover's options are the
+    /// checker's, the same for every context.
+    /// </summary>
+    private sealed record ContextKey(Program Program, ProverContext Context, int Seed, List<Type> UsedTypes,
+      List<Declaration> Declarations, List<KeyValuePair<string, string>> SmtOptions)
+    {
+      public bool Equals(ContextKey other) =>
+        other != null && ReferenceEquals(Program, other.Program) && ReferenceEquals(Context, other.Context)
+        && Seed == other.Seed
+        && UsedTypes.Count == other.UsedTypes.Count && UsedTypes.Zip(other.UsedTypes).All(p => ReferenceEquals(p.First, p.Second))
+        && Declarations.Count == other.Declarations.Count
+        && Declarations.Zip(other.Declarations).All(p => ReferenceEquals(p.First, p.Second))
+        && SmtOptions.SequenceEqual(other.SmtOptions);
+
+      public override int GetHashCode() => HashCode.Combine(Seed, Declarations.Count);
     }
 
     private void SetTimeout(uint timeout)
@@ -157,16 +213,12 @@ namespace Microsoft.Boogie
     /// <summary>
     /// Set up the context.
     /// </summary>
-    private void Setup(Program program, ProverContext ctx, Split split)
+    private void Setup(Program program, ProverContext ctx, List<Declaration> reorderedDeclarations)
     {
-      SolverOptions.RandomSeed = 1 < Options.RandomizeVcIterations ? split.NextRandom() : split.RandomSeed;
-
       Program = program;
       // TODO(wuestholz): Is this lock necessary?
       lock (Program.TopLevelDeclarations)
       {
-        var declarations = split.PrunedDeclarations;
-        var reorderedDeclarations = GetReorderedDeclarations(declarations, SolverOptions.RandomSeed);
         foreach (var declaration in reorderedDeclarations) {
           Contract.Assert(declaration != null);
           if (declaration is TypeCtorDecl typeDecl)
