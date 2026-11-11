@@ -1,0 +1,114 @@
+# Measures the Dafny-process cost of setting up splits (erniecohen/dafny#241, cause 2) on
+# Dafny's standard library, before and after this branch, under workstation and server GC.
+#
+# Dafny is the upstream 4.11.0 release from nuget.org, which builds against Boogie 3.5.5, with
+# its Boogie assemblies replaced by this line's: `base` is v3.5.5+review.a7d160a7 (7873c81),
+# the Boogie that erniecohen/dafny review/4.11.0 pins; `fix` is this branch without options;
+# `new` is this branch with `--boogie /cacheUsedTypes --boogie /lockFreeExpansion`.  Std is the
+# program in the release's DafnyStandardLibraries.doo, with the options of its manifest.
+name: measure-241
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ perf/241-split-setup ]
+    paths: [ '.github/workflows/measure-241.yml', '.github/measure/**' ]
+
+jobs:
+  measure:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: 1
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: new, fetch-depth: 0 }
+      - uses: actions/checkout@v4
+        with: { path: base, ref: 7873c81883456dfc98fabd84b5d3b6d132417219 }
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '8.0.x' }
+      - name: Tools
+        run: |
+          sudo apt-get install -y -qq time
+          dotnet tool install -g dotnet-counters --version 8.0.547301
+          dotnet tool install -g dotnet-trace --version 8.0.547301
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+          curl -sSL -o z3.zip https://github.com/Z3Prover/z3/releases/download/z3-4.12.1/z3-4.12.1-x64-glibc-2.35.zip
+          unzip -q z3.zip && cp z3-4.12.1-x64-glibc-2.35/bin/z3 ./z3 && ./z3 --version
+          nproc; free -g
+      - name: Build Boogie, base and new
+        run: |
+          dotnet build base/Source/BoogieDriver -c Release -v q
+          dotnet build new/Source/BoogieDriver -c Release -v q
+      - name: Dafny 4.11.0 with each Boogie, and Std
+        run: |
+          curl -sSL -o dafny.nupkg https://api.nuget.org/v3-flatcontainer/dafny/4.11.0/dafny.4.11.0.nupkg
+          mkdir pkg && cd pkg && unzip -q ../dafny.nupkg && cd ..
+          for v in base new; do
+            cp -r pkg/tools/net8.0/any dafny-$v
+            cp $v/Source/BoogieDriver/bin/Release/net8.0/Boogie.*.dll dafny-$v/
+          done
+          mkdir std && cd std && unzip -q ../pkg/tools/net8.0/any/DafnyStandardLibraries.doo && cat manifest.toml && cp program ../std.dfy
+      - name: Run variants
+        run: |
+          set -x
+          cores=$(nproc)
+          common="verify std.dfy --cores $cores --solver-path ./z3 --standard-libraries false --enforce-determinism --reads-clauses-on-methods --track-print-effects --unicode-char true --allow-warnings --verification-time-limit 60"
+          opts="--boogie /cacheUsedTypes --boogie /lockFreeExpansion"
+          noop="--boogie /proverOpt:SOLVER=noop"
+          run() { # name gc dafny extra...
+            name=$1; gc=$2; d=$3; shift 3
+            dotnet-counters collect --format csv -o counters-$name.csv --refresh-interval 1 --counters System.Runtime -- \
+              env DOTNET_gcServer=$gc /usr/bin/time -f "%e %U %S %M" -o time-$name.txt dotnet dafny-$d/DafnyDriver.dll $common "$@" > out-$name.txt 2>&1 || true
+            echo "$name $(cat time-$name.txt | tail -1) $(grep -o 'Dafny program verifier finished.*' out-$name.txt)" | tee -a runs.txt
+          }
+          # Dafny-process work alone: the noop solver answers every check at once.
+          for rep in 1 2 3; do for gc in 0 1; do
+            run noop-base-gc$gc-r$rep $gc base $noop
+            run noop-fix-gc$gc-r$rep $gc new $noop
+            run noop-new-gc$gc-r$rep $gc new $noop $opts
+          done; done
+          # With Z3.
+          for gc in 0 1; do
+            run z3-base-gc$gc $gc base
+            run z3-new-gc$gc $gc new $opts
+          done
+      - name: Allocation sites
+        run: |
+          cores=$(nproc)
+          common="verify std.dfy --cores $cores --solver-path ./z3 --standard-libraries false --enforce-determinism --reads-clauses-on-methods --track-print-effects --unicode-char true --allow-warnings --boogie /proverOpt:SOLVER=noop"
+          dotnet build new/.github/measure/AllocSites -c Release -v q -o allocsites
+          for v in base new; do
+            o=""; [ $v = new ] && o="--boogie /cacheUsedTypes --boogie /lockFreeExpansion"
+            dotnet-trace collect --profile gc-verbose -o alloc-$v.nettrace -- dotnet dafny-$v/DafnyDriver.dll $common $o > /dev/null 2>&1 || true
+            dotnet allocsites/AllocSites.dll alloc-$v.nettrace 20 > alloc-$v.md || true
+          done
+      - name: N against U, and Z3 time on the background
+        run: |
+          cores=$(nproc)
+          common="verify std.dfy --cores $cores --solver-path ./z3 --standard-libraries false --enforce-determinism --reads-clauses-on-methods --track-print-effects --unicode-char true --allow-warnings --verification-time-limit 60"
+          mkdir logs
+          dotnet dafny-new/DafnyDriver.dll $common --boogie /proverOpt:SOLVER=noop --boogie "/proverLog:$PWD/logs/@PROC@.smt2" > /dev/null 2>&1 || true
+          du -sh logs; ls logs | wc -l
+          python3 new/.github/measure/nu.py logs > nu.md
+          python3 new/.github/measure/z3bg.py ./z3 logs 200 > z3bg.md
+          rm -rf logs
+      - name: Summary
+        if: always()
+        run: |
+          python3 new/.github/measure/summary.py runs.txt counters-*.csv > summary.md || true
+          { echo "## Runs"; cat summary.md; echo; echo "## N against U"; cat nu.md; echo; echo "## Z3 on the background"; cat z3bg.md; echo; echo "## Allocation, base"; head -60 alloc-base.md; echo; echo "## Allocation, new"; head -60 alloc-new.md; } >> $GITHUB_STEP_SUMMARY || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: measure-241
+          path: |
+            runs.txt
+            time-*.txt
+            out-*.txt
+            counters-*.csv
+            summary.md
+            nu.md
+            z3bg.md
+            alloc-*.md
