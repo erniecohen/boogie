@@ -56,3 +56,14 @@ The new opt-in `/structuralLiterals` folds the negated literal guards that desug
 lets passification keep an incarnation at a join when the predecessors hold equal literals or the
 same variable, by value rather than by object.  With it, a program built in memory and the same
 program printed and parsed get the same queries.  See `REVIEW.md`.
+
+A prover that took a `Reset` after a `FullReset` sent the solver the background of the first
+context it had set up, not of the current one: `FullReset` kept the cached background.  The
+command line reaches this when an implementation has several splits, and Z3 could stop with
+`unknown constant`, or get an axiom that the current context hides.  Dafny's task pipeline
+targets the prover for every split and is not affected.  See `REVIEW.md`.
+
+The new opt-in `/cacheUsedTypes` collects the basic types of a split's type encoding from a cache
+of each declaration's types, instead of visiting the whole program for every split, and the new
+opt-in `/lockFreeExpansion` expands `{:inline}` functions without a lock that made provers wait
+for each other.  Neither changes what the solver gets.  See `REVIEW.md`.
