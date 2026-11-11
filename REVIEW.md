@@ -266,3 +266,71 @@ and so the solver's work, of a program built in memory, and it changes nothing w
 The unit tests `PrintFidelityTest.StructuralLiteralsMakeThePrintedProgramSendTheSameQueries` build
 the two cases in memory with `Expr.True`, print them, and check that with the option the printed
 program sends the same queries, and that without it the queries differ, as before.
+
+## A Reset after a FullReset sends the current context's background
+
+`SMTLibInteractiveTheoremProver` caches the background of a context, every declaration and
+axiom sent before the first check, in `CachedCommon` when that check is prepared, and sends it
+again after each `Reset`, which `(reset)`s the solver between the checks of one context.
+`FullReset`, which starts a new context for a split (`Checker.Target`), cleared the background
+but kept the cache, and `Check` set the cache only when it was empty (`??=`).  So the first
+check of every later context put the first context's background back, and the next `Reset`
+sent it: the solver got the first context's declarations and axioms instead of the current
+one's.  A function that the first context pruned is undeclared, and Z3 stops with
+`unknown constant`; an axiom that the current context hides is asserted.  `FullReset` now drops
+the cache and `CachedAxBuilder`, which the first check of the new context sets again.  The cache
+is now the background's length, `CachedCommonLength`, not a copy of it: between `FullReset`s the
+background is only appended to, so cutting it back to that length restores the cached text,
+where each context used to copy it twice, as a string and into a new builder.  On Dafny's Std,
+with a context for each of 7,611 splits, those copies were about 2% of the allocation.
+
+A prover reaches a `Reset` after a `FullReset` when one implementation has several splits and
+the checks of a later split reuse the prover without targeting it again, as the command line's
+verification of an implementation does (`/vcsSplitOnEveryAssert`, `{:split_here}`, ...).  The
+task pipeline that Dafny uses targets the prover for every split, so its queries do not change.
+Elsewhere, only the background sent after such a `Reset` changes, to the one the context sent
+first.
+
+`Test/commandline/SplitSetup.bpl` verifies three procedures under `/vcsSplitOnEveryAssert`
+with one prover: Z3 stopped with `unknown constant` before, and all three verify now.  The unit
+test `SplitSetupTest.ResetSendsTheBackgroundOfItsOwnContext` checks in the whole command stream
+that every background sent after a `Reset` is the one its context sent first.
+
+## Setting up a split: `/cacheUsedTypes` and `/lockFreeExpansion`
+
+Two opt-in options take Dafny-process work out of setting up a prover for a split.  Neither
+changes a byte of what the solver gets.
+
+`Checker.Target` collects the basic types for which the arguments and predicates encodings
+declare casts by visiting the whole program, entering no implementation but the split's, once
+for every split.  On Dafny's `Test/dafny/Seq.bpl` under `/vcsSplitOnEveryAssert` (612 splits,
+4 cores, `SOLVER=noop`) the visits took 6.2 s of the process's 12.7 s of CPU.  Under
+`/cacheUsedTypes` the types come from a cache of each declaration's own types, in the order the
+visitor meets them first, and only the split's implementation is visited again
+(`VCGeneration/UsedTypes.cs` says why the list is the same, in the same order, with the same
+objects).  The cache holds a declaration weakly and assumes that a declaration other than an
+implementation does not change after verification starts.
+
+`Boogie2VCExprTranslator` translates the body of an `{:inline}` function at each call while it
+holds a lock on the function.  The translation reads the function and writes only its own
+prover's translator and expressions, so the lock guards nothing that another prover shares, but
+every prover that expands the same function waits for the others.  Profiles of `dafny verify` on
+Dafny's standard library with 18 cores found 18.9 s of threads waiting there.  Under
+`/lockFreeExpansion` the translation takes no lock.
+
+The background itself is not cached.  The task proposed caching the erased and printed
+background of a program once and sending it after every reset; but under pruning each split
+gets its own background, the pruned declarations of its implementation, so the cache would key
+on the split's declarations.  On `Seq.bpl`, 74 checks had 71 distinct backgrounds, and the
+backgrounds are 62% of the bytes sent.  The text of one declaration cannot be cached either: the
+namer gives a name the suffix `@@<n>` by the names it has given before in the context, so the
+1,506 distinct axiom texts of the 74 backgrounds are 645 axioms.
+
+The unit tests `SplitSetupTest` compare the whole command stream of a program with basic types
+first met in different declarations, a polymorphic function and map, inline functions, hideable
+axioms with `hide` and `reveal`, and implementations with their own `{:random_seed}` and
+`{:rlimit}`, with and without both options: under both encodings, with and without pruning,
+with declaration normalization, without it and with a random seed, and with and without
+`/vcsSplitOnEveryAssert`, through the task pipeline and through the command line.  They fail if
+the cached types come in another order.  `Test/commandline/SplitSetup.bpl` compares the command
+streams of the command line with `cmp`.

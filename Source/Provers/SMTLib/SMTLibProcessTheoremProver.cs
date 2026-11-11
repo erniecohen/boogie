@@ -29,7 +29,10 @@ namespace Microsoft.Boogie.SMTLib
     protected bool HadErrors { get; set; }
     
     protected StringBuilder common = new();
-    protected string CachedCommon = null;
+    // The length of the background in common when the context's first check cached it.  common
+    // is only appended to until a FullReset clears it, so its first CachedCommonLength characters
+    // are that background, and cutting common back to them restores it without copying it.
+    protected int? CachedCommonLength = null;
     protected TextWriter currentLogFile;
     protected volatile ErrorHandler currentErrorHandler;
     
