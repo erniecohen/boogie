@@ -88,14 +88,14 @@ jobs:
               DOTNET_EventPipeConfig='Microsoft-Windows-DotNETRuntime:0x1:5' \
               dotnet dafny-$v/DafnyDriver.dll $common $o > /dev/null 2>&1 || true
             dotnet allocsites/AllocSites.dll alloc-$v-gc$gc.nettrace 20 > alloc-$v-gc$gc.md || true
-            head -1 alloc-$v-gc$gc.md
+            head -40 alloc-$v-gc$gc.md
           done; done
       - name: N against U, and Z3 time on the background
         run: |
           cores=$(nproc)
           common="verify std.dfy --cores $cores --solver-path ./z3 --standard-libraries false --enforce-determinism --reads-clauses-on-methods --track-print-effects --unicode-char true --allow-warnings --verification-time-limit 60"
           mkdir logs
-          dotnet dafny-new/DafnyDriver.dll $common --boogie /proverOpt:SOLVER=noop --boogie "/proverLog:$PWD/logs/@PROC@.smt2" > logs.txt 2>&1 || true
+          dotnet dafny-new/DafnyDriver.dll $common --boogie /proverOpt:SOLVER=noop --solver-log "$PWD/logs/@PROC@.smt2" > logs.txt 2>&1 || true
           tail -5 logs.txt; du -sh logs; ls logs | wc -l
           python3 new/.github/measure/nu.py logs | tee nu.md
           python3 new/.github/measure/z3bg.py ./z3 logs 200 60 | tee z3bg.md
