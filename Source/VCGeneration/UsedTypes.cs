@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -37,9 +38,17 @@ public static class UsedTypes
         }
         continue;
       }
-      types.UnionWith(cache.GetValue(declaration,
-        d => new BasicTypeVisitor(d, EnterNode).GetBasicTypes().ToList()));
+      // A declaration other than an implementation contains no implementation, so the visitor
+      // enters every node of it.  The callbacks are static, so a lookup allocates nothing.
+      foreach (var type in cache.GetValue(declaration, visitDeclaration)) {
+        types.Add(type);
+      }
     }
     return types.ToList();
   }
+
+  private static readonly Func<Absy, bool> enterAll = _ => true;
+
+  private static readonly ConditionalWeakTable<Declaration, List<Type>>.CreateValueCallback visitDeclaration =
+    declaration => new BasicTypeVisitor(declaration, enterAll).GetBasicTypes().ToList();
 }
