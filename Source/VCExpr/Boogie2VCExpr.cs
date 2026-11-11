@@ -1541,13 +1541,32 @@ namespace Microsoft.Boogie.VCExprAST
       Contract.Requires(Cce.NonNullElements(typeArgs));
       Contract.Assert(app.Func != null); // resolution must have happened
 
+      if (app.Func.Body == null)
+      {
+        return null;
+      }
+
+      if (GenerationOptions.Options.LockFreeExpansion)
+      {
+        return ExpandBody(app, args, typeArgs);
+      }
+
       lock (app.Func)
       {
+        return ExpandBody(app, args, typeArgs);
+      }
+    }
+
+    /// <summary>
+    /// The body of app's function, with the formals bound to args and the type parameters to
+    /// typeArgs.  It reads the function and writes only this translator's state and new
+    /// expressions of its generator, so under /lockFreeExpansion it runs without the lock that
+    /// otherwise makes every prover wait for the others' expansions of the same function.
+    /// </summary>
+    private VCExpr ExpandBody(FunctionCall app, List<VCExpr> args, List<Type> typeArgs)
+    {
+      {
         var exp = app.Func.Body;
-        if (exp == null)
-        {
-          return null;
-        }
 
         VCExpr
           translatedBody;

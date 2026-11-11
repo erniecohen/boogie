@@ -89,6 +89,8 @@ namespace Microsoft.Boogie
     bool NormalizeDeclarationOrder { get; }
     bool DeterministicLiteralHashes { get; }
     bool StructuralLiterals { get; }
+    bool CacheUsedTypes => false;
+    bool LockFreeExpansion => false;
     XmlSink XmlSink { get; }
     uint VcsFinalAssertTimeout { get; }
     uint VcsKeepGoingTimeout { get; }

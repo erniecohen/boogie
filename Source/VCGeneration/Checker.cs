@@ -130,9 +130,7 @@ namespace Microsoft.Boogie
     {
       /* We should not traverse implementations other than the current one, because they might be in the process of being modified.
        */
-      bool EnterNode(Absy node) => node is not Implementation implementation || implementation == split.Implementation;
-
-      var usedTypes = new BasicTypeVisitor(prog, EnterNode).GetBasicTypes().ToList();
+      var usedTypes = UsedTypes.Collect(prog, split.Implementation, Options.CacheUsedTypes);
       lock (this)
       {
         hasOutput = default;

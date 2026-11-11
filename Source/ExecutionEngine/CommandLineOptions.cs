@@ -243,6 +243,8 @@ namespace Microsoft.Boogie
     public bool StructuralLiterals { get; set; }
 
     public bool VerifyAsTasks { get; set; }
+    public bool CacheUsedTypes { get; set; }
+    public bool LockFreeExpansion { get; set; }
 
     public bool ImmediatelyAcceptCommands => StratifiedInlining > 0 || ContractInfer;
 
@@ -1352,6 +1354,8 @@ namespace Microsoft.Boogie
               ps.CheckBooleanFlag("printDefinitionAxiomsInPlace", x => PrintDefinitionAxiomsInPlace = x) ||
               ps.CheckBooleanFlag("structuralLiterals", x => StructuralLiterals = x) ||
               ps.CheckBooleanFlag("verifyAsTasks", x => VerifyAsTasks = x) ||
+              ps.CheckBooleanFlag("cacheUsedTypes", x => CacheUsedTypes = x) ||
+              ps.CheckBooleanFlag("lockFreeExpansion", x => LockFreeExpansion = x) ||
               ps.CheckBooleanFlag("wait", x => Wait = x) ||
               ps.CheckBooleanFlag("trace", x => Verbosity = CoreOptions.VerbosityLevel.Trace) ||
               ps.CheckBooleanFlag("quiet", x => Verbosity = CoreOptions.VerbosityLevel.Quiet) ||
@@ -1962,6 +1966,18 @@ namespace Microsoft.Boogie
                 as an assertion batch.  Programs with CIVL declarations are not
                 supported, and the type encoding is taken as given: a polymorphic
                 program needs /typeEncoding:a or /typeEncoding:p.
+  /cacheUsedTypes
+                compute the basic types that a split's type encoding declares casts
+                for from a cache of each declaration's types, instead of visiting
+                the whole program again for every split.  Implementations are
+                visited each time.  The solver gets the same queries.  A front end
+                that changes a declaration other than an implementation in place
+                after verification has started must not use it.
+  /lockFreeExpansion
+                translate the body of an {:inline} function at each call without
+                holding a lock on the function.  The translation reads the body and
+                writes only the state of its own prover, so the solver gets the same
+                queries; prover threads no longer wait for one another.
   /structuralLiterals
                 treat literals by value where Boogie otherwise compares expression
                 objects: the negated guard that desugaring an if or while assumes
