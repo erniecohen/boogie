@@ -17,7 +17,10 @@ on:
 jobs:
   measure:
     runs-on: ubuntu-22.04
-    timeout-minutes: 300
+    timeout-minutes: 340
+    defaults:
+      run:
+        shell: bash --noprofile --norc -o pipefail {0}
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
       DOTNET_NOLOGO: 1
@@ -49,7 +52,7 @@ jobs:
           mkdir std && cd std && unzip -q ../pkg/tools/net8.0/any/DafnyStandardLibraries.doo && cat manifest.toml && cp program ../std.dfy
       - name: Sanity
         run: |
-          timeout 900 dotnet dafny-new/DafnyDriver.dll verify std.dfy --cores $(nproc) --solver-path ./z3 --standard-libraries false --enforce-determinism --reads-clauses-on-methods --track-print-effects --unicode-char true --allow-warnings --boogie /proverOpt:SOLVER=noop > sanity.txt 2>&1; echo "exit $?"
+          timeout 900 dotnet dafny-new/DafnyDriver.dll verify std.dfy --cores $(nproc) --solver-path ./z3 --standard-libraries false --enforce-determinism --reads-clauses-on-methods --track-print-effects --unicode-char true --allow-warnings --boogie /proverOpt:SOLVER=noop > sanity.txt 2>&1 || echo "exit $? (4: checks not verified, as the noop solver answers unknown)"
           head -20 sanity.txt; echo ...; tail -20 sanity.txt
       - name: Run variants
         run: |
@@ -63,7 +66,7 @@ jobs:
             echo "$name $(tail -1 time-$name.txt) $(grep -o 'Dafny program verifier finished.*' out-$name.txt)" | tee -a runs.txt
           }
           # Dafny-process work alone: the noop solver answers every check at once.
-          for rep in 1 2 3; do for gc in 0 1; do
+          for rep in 1 2; do for gc in 0 1; do
             run noop-base-gc$gc-r$rep $gc base $noop
             run noop-fix-gc$gc-r$rep $gc new $noop
             run noop-new-gc$gc-r$rep $gc new $noop $opts
