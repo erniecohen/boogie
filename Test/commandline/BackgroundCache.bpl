@@ -3,9 +3,9 @@
 // RUN: %boogie /typeEncoding:a /prune:1 /vcsSplitOnEveryAssert /proverOpt:SOLVER=noop /proverLog:"%t.cached.smt2" /cacheBackground "%s" > "%t.cached"
 // RUN: cmp "%t.base.smt2" "%t.cached.smt2"
 // RUN: %boogie /typeEncoding:a /prune:1 /vcsSplitOnEveryAssert /trackVerificationCoverage /proverLog:"%t.base.smt2" "%s" > "%t"
-// RUN: %boogie /typeEncoding:a /prune:1 /vcsSplitOnEveryAssert /trackVerificationCoverage /proverLog:"%t.cached.smt2" /cacheBackground /trace "%s" > "%t.trace"
+// RUN: %boogie /typeEncoding:a /prune:1 /vcsSplitOnEveryAssert /trackVerificationCoverage /proverLog:"%t.cached.smt2" /cacheBackground "%s" > "%t.cached"
 // RUN: cmp "%t.base.smt2" "%t.cached.smt2"
-// RUN: grep "Boogie program verifier finished\|Background cache" "%t.trace" >> "%t"
+// RUN: %diff "%t" "%t.cached"
 // RUN: %diff "%s.expect" "%t"
 
 // /cacheBackground restarts a prover's context for a split with the same declarations as the one
