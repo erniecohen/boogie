@@ -92,3 +92,7 @@ See https://github.com/erniecohen/boogie/pull/8#issuecomment-6847527024.
 `/typeEncoding:m` is selected, after typechecking and before preparing tasks. Unsupported
 polymorphism and expanding type cycles are rejected with `ArgumentException` instead of
 reaching the solver. Arguments/predicates encoding behavior is unchanged.
+
+Monomorphization recognizes ground bitvector width proxies in already typed
+inputs and materializes their stable width, instead of rejecting valid input as
+unsupported polymorphism. General unresolved type proxies are still rejected.

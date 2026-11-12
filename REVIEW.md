@@ -429,3 +429,15 @@ No axiom is added and no default encoding changes.
 `MonomorphizationTest` exercises the API with polymorphic functions and quantified axioms,
 a valid proof and an `assert false` control, all three encodings, already monomorphic input,
 and both monomorphization failure statuses. `/verifyAsTasks` uses the repaired API too.
+
+The task API also accepts ground bitvector width proxies left by typechecking an
+already typed expression. `BvConcatExpr.Typecheck` creates a fresh width proxy, but
+an enclosing pretyped application keeps its previous type instantiation and need
+not unify that fresh proxy with a concrete type. `BvTypeProxy.BvBits` specifies the
+stable width after typechecking even when `ProxyFor` is null. Such proxies have no
+free type parameters: the monomorphizability checker accepts them, and the
+monomorphization duplicator materializes `Type.GetBvType(node.BvBits)`. This uses
+the same width as SMT translation already does and adds no fact or axiom. General
+unresolved type proxies remain unsupported. A unit test supplies a program that
+has already been typechecked, then verifies its concatenations and a false control
+through the API. Arguments and predicates encodings are unchanged.
