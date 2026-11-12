@@ -267,15 +267,14 @@ the tasks, and report the results as it reports its own: per implementation, wit
 outcome, error and trailer messages, and per split as an assertion batch in `/xml`.  A program then
 gets the preparation, the splits and the queries it gets from a front end; a split's prover log is
 named `<implementation>_split<n>`, as there.  It refuses a program with CIVL declarations, which
-the task pipeline does not support, and a polymorphic program under the monomorphic encoding,
-because `GetVerificationTasks` takes the encoding as given where `ResolveAndTypecheck` would
-monomorphize the program.  Without the option the command line is unchanged.
+the task pipeline does not support. Under the monomorphic encoding, the task API monomorphizes
+a polymorphic program after typechecking, as `ResolveAndTypecheck` does.  Without the option the command line is unchanged.
 
 `Test/commandline/VerifyAsTasks.bpl` verifies a program with and without the option and checks
 that both report the same error and the same counts.  The unit tests
 `PrintFidelityTest.VerifyAsTasks*` check that the option sends the queries of the tasks, that
 without it the command line's queries differ as before, that it counts as the command line does,
-and that it refuses CIVL and unmonomorphized polymorphic programs.
+that it refuses CIVL, and that it monomorphizes polymorphic programs.
 
 ## Structural literals: `/structuralLiterals`
 
@@ -415,3 +414,18 @@ controlled synchronization context to hold the cancelled reader's continuation.
 It starts the next check-sat read, releases exactly two permits, and requires the
 following resource response to complete without another permit. The test fails
 on the old implementation at that assertion, and has bounded waits and cleanup.
+
+## Monomorphization through the task API
+
+`GetVerificationTasks` now monomorphizes a polymorphic program under `/typeEncoding:m`,
+after typechecking and before dead-variable elimination. Previously only the command-line
+`ResolveAndTypecheck` path did so, and front ends could send unspecialized type variables
+to the solver. Programs with unsupported polymorphism or an expanding type cycle raise
+`ArgumentException`, just as resolution/type errors do in this API; the command-line path
+continues to return `FatalError`. Already monomorphic programs skip the transformation.
+An explicitly selected arguments or predicates encoding stays selected in the task API.
+No axiom is added and no default encoding changes.
+
+`MonomorphizationTest` exercises the API with polymorphic functions and quantified axioms,
+a valid proof and an `assert false` control, all three encodings, already monomorphic input,
+and both monomorphization failure statuses. `/verifyAsTasks` uses the repaired API too.

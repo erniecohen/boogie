@@ -87,3 +87,8 @@ overlap the next read and make a later resource response wait for an extra permi
 indefinitely. The regression controls the old reader's continuation and requires
 both check-sat replies and the resource reply to complete with exactly two permits.
 See https://github.com/erniecohen/boogie/pull/8#issuecomment-6847527024.
+
+`ExecutionEngine.GetVerificationTasks` now monomorphizes polymorphic input when
+`/typeEncoding:m` is selected, after typechecking and before preparing tasks. Unsupported
+polymorphism and expanding type cycles are rejected with `ArgumentException` instead of
+reaching the solver. Arguments/predicates encoding behavior is unchanged.
