@@ -43,6 +43,33 @@ procedure Bad() { assert Id(42) == 42; assert false; }
     Assert.AreEqual(expected, options.TypeEncodingMethod);
   }
 
+  [TestCase("m")]
+  [TestCase("a")]
+  public async Task TaskApiAcceptsPretypedBitvectorConcatenations(string encoding)
+  {
+    var options = CommandLineOptions.FromArguments(TextWriter.Null, "/typeEncoding:" + encoding);
+    options.VcsCores = 1;
+    using var engine = ExecutionEngine.CreateWithoutSharedCache(options);
+    var program = Parse(@"
+function Id<T>(x: T): T;
+axiom (forall<T> x: T :: {Id(x)} Id(x) == x);
+procedure Good(x: bv16) { assert Id(0bv8 ++ x) == 0bv8 ++ x; }
+procedure Bad(x: bv16) { assert Id(0bv8 ++ x) == 0bv8 ++ x; assert false; }
+");
+    // Front ends supply already typed expressions. The API typechecks again:
+    // concat gets a fresh width proxy while its pretyped enclosing call keeps its type.
+    Assert.AreEqual(0, program.Resolve(options));
+    Assert.AreEqual(0, program.Typecheck(options));
+    var tasks = await engine.GetVerificationTasks(program);
+    Assert.AreEqual(2, tasks.Count);
+    foreach (var task in tasks)
+    {
+      var result = ((Completed)await task.TryRun()!.ToTask()).Result;
+      Assert.AreEqual(task.Split.Implementation.Name == "Good" ? SolverOutcome.Valid : SolverOutcome.Invalid,
+        result.Outcome);
+    }
+  }
+
   [TestCase("a", CoreOptions.TypeEncoding.Arguments)]
   [TestCase("p", CoreOptions.TypeEncoding.Predicates)]
   [TestCase("m", CoreOptions.TypeEncoding.Monomorphic)]

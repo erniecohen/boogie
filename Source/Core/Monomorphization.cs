@@ -247,14 +247,8 @@ namespace Microsoft.Boogie
 
     public override Type VisitBvTypeProxy(BvTypeProxy node)
     {
-      if (node.ProxyFor == null)
-      {
-        isMonomorphizable = false;
-      }
-      else
-      {
-        Visit(TypeProxy.FollowProxy(node));
-      }
+      // Bitvector proxies contain width constraints, not free type parameters.
+      // After typechecking BvBits is stable even when ProxyFor is still null.
       return node;
     }
 
@@ -1083,7 +1077,7 @@ namespace Microsoft.Boogie
 
     public override Type VisitBvTypeProxy(BvTypeProxy node)
     {
-      return VisitType(TypeProxy.FollowProxy(node));
+      return Type.GetBvType(node.BvBits);
     }
 
     public override Expr VisitExpr(Expr node)
