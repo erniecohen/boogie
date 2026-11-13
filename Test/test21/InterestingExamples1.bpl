@@ -20,6 +20,7 @@ procedure P() returns () {
   assert heap[o, f] == emptySet && heap[o, g] == 13;
 
   heap[o, f] := heap[o, f][17 := true];
+  assert (forall<t> y:t :: heap[o, f][y] == (y == 17));
   heap[o, f] := heap[o, f][g := true];
 
   assert (forall<t> y:t :: heap[o, f][y] == (y == 17 || y == g));

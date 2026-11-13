@@ -11,7 +11,7 @@ base, candidate, z3, output = [p.resolve() for p in (base, candidate, z3, output
 output.mkdir(parents=True, exist_ok=True)
 fixtures = Path('Test/test21/issue-284-evidence')
 report = {'solver_sha256': hashlib.sha256(z3.read_bytes()).hexdigest(), 'runs': {}}
-sources = sorted((fixtures / 'examples').glob('*.bpl')) + [Path('Test/test21/issue-284-canonical-payloads.bpl')]
+sources = sorted((fixtures / 'examples').glob('*.bpl')) + [Path('Test/test21/' + name) for name in ['issue-284-canonical-payloads.bpl', 'InterestingExamples1.bpl', 'MapOutputTypeParams.bpl']]
 anchored = output / 'anchored'
 anchored.mkdir(exist_ok=True)
 for source in list(sources):
