@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using System.Reactive.Threading.Tasks;
 using System.Threading.Tasks;
@@ -60,6 +62,36 @@ procedure Bad(x: bv16) { assert Id(0bv8 ++ x) == 0bv8 ++ x; assert false; }
     // concat gets a fresh width proxy while its pretyped enclosing call keeps its type.
     Assert.AreEqual(0, program.Resolve(options));
     Assert.AreEqual(0, program.Typecheck(options));
+    var tasks = await engine.GetVerificationTasks(program);
+    Assert.AreEqual(2, tasks.Count);
+    foreach (var task in tasks)
+    {
+      var result = ((Completed)await task.TryRun()!.ToTask()).Result;
+      Assert.AreEqual(task.Split.Implementation.Name == "Good" ? SolverOutcome.Valid : SolverOutcome.Invalid,
+        result.Outcome);
+    }
+  }
+
+  [TestCase("m")]
+  [TestCase("a")]
+  public async Task TaskApiDropsQuantifiersThatBindNothing(string encoding)
+  {
+    var options = CommandLineOptions.FromArguments(TextWriter.Null, "/typeEncoding:" + encoding);
+    options.VcsCores = 1;
+    using var engine = ExecutionEngine.CreateWithoutSharedCache(options);
+    var program = Parse(@"
+function Id<T>(x: T): T;
+axiom (forall<T> x: T :: {Id(x)} Id(x) == x);
+function Zero(): int;
+axiom Zero() == 0;
+procedure Good() { assert Id(Zero()) == 0; }
+procedure Bad() { assert Id(Zero()) == 0; assert false; }
+");
+    // The parser rejects a quantifier with no bound variables, but a front end can
+    // build one: Dafny does for the prefix predicate of a nullary least predicate.
+    // SMT-LIB rejects an empty list of sorted variables, so it must not reach the solver.
+    var axiom = program.Axioms.Single(a => a.Expr is NAryExpr { Fun: BinaryOperator });
+    axiom.Expr = new ForallExpr(axiom.tok, new List<TypeVariable>(), new List<Variable>(), null, null, axiom.Expr);
     var tasks = await engine.GetVerificationTasks(program);
     Assert.AreEqual(2, tasks.Count);
     foreach (var task in tasks)

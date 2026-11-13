@@ -9,7 +9,9 @@ namespace VCGeneration.Prune;
 
 record RevealedState(HideRevealCmd.Modes Mode, IImmutableSet<Function> Offset) {
   public bool IsRevealed(Function function) {
-    return Mode == HideRevealCmd.Modes.Hide == Offset.Contains(function) || function.AlwaysRevealed;
+    // hide and reveal name a declared function; a monomorphized instance follows it.
+    var declared = function.OriginalDeclWithFormals as Function ?? function;
+    return Mode == HideRevealCmd.Modes.Hide == Offset.Contains(declared) || declared.AlwaysRevealed;
   }
   
   public static readonly RevealedState AllRevealed = new(HideRevealCmd.Modes.Reveal, ImmutableHashSet<Function>.Empty);
