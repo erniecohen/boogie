@@ -1,3 +1,5 @@
 Test/commandline/IdleHandshake.bpl
 Source/UnitTests/ExecutionEngineTests/IdleHandshakeTest.cs
 Source/UnitTests/ExecutionEngineTests/UnsatSolverTest.cs
+Test/pruning/RevealMonomorphic.bpl
+Source/UnitTests/ExecutionEngineTests/MonomorphizationTest.cs
