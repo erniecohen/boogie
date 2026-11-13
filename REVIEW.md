@@ -549,6 +549,18 @@ the same without `/cacheBackground` and with it; with `/scheduleByImplementation
 implementation's checks run one after the other.  The test fails if `/cacheBackground` alone
 schedules by implementation.
 
+`CacheBackgroundAloneKeepsTheResourceCountOfEveryCheck` runs the program with the solver on the
+path, with 1 core and with 3.  A gate in front of each solver process holds every check until all
+checks that can run have reached their gates, and then lets one go, so that the same checks run on
+the same processes in the same order in every run; the test checks that two runs without the option
+agree.  The resource count of every check is then the same without the option and with
+`/cacheBackground` alone.  The test fails if `/cacheBackground` alone schedules by implementation.
+
+`ACheckerThatCannotBeMadeIsNotCountedAsRunning`: under `/scheduleByImplementation`, a split whose
+checker cannot be made, here because the solver cannot be created, no longer stays counted as
+running its implementation.  The restart and setup counts, and the `/trace` line that reports them,
+are each pool's own.
+
 The key compares declarations by reference, as `/lockFreeExpansion` reads them: a front end must
 not change a function, axiom or constant in place once verification has started.
 `Test/commandline/BackgroundCache.bpl` compares the whole command stream with `cmp`, with the noop

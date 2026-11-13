@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Boogie;
@@ -236,6 +237,25 @@ namespace VC
       return new Checker(this, log, Options.ProverLogFileAppend);
     }
 
+    /// <summary>The numbers of contexts this pool's checkers set up from their declarations and restarted under /cacheBackground.</summary>
+    public int ContextSetups => contextSetups;
+    public int ContextRestarts => contextRestarts;
+    private int contextSetups, contextRestarts;
+    internal void CountSetup() => Interlocked.Increment(ref contextSetups);
+    internal void CountRestart() => Interlocked.Increment(ref contextRestarts);
+
+    /// <summary>The number of splits that /scheduleByImplementation counts as running.</summary>
+    internal int RunningCount
+    {
+      get
+      {
+        lock (gate)
+        {
+          return running.Values.Sum();
+        }
+      }
+    }
+
     public void Dispose()
     {
       // availableCheckers before gate, as in AddChecker: the scheduling by implementation takes and
@@ -247,8 +267,8 @@ namespace VC
           disposed = true;
           if (Options.Trace && Options.CacheBackground)
           {
-            Options.OutputWriter.WriteLine("Background cache, process totals: {0} contexts restarted, {1} set up",
-              Checker.ContextRestarts, Checker.ContextSetups);
+            Options.OutputWriter.WriteLine("Background cache: {0} contexts restarted, {1} set up",
+              ContextRestarts, ContextSetups);
           }
           checkersSemaphore.Dispose();
           while (availableCheckers.TryPop(out var checker)) {

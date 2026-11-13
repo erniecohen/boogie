@@ -166,12 +166,12 @@ namespace Microsoft.Boogie
           Program = prog;
           if (TheoremProver.TryRestartContext(gen))
           {
-            Interlocked.Increment(ref ContextRestarts);
+            Pool.CountRestart();
             return;
           }
         }
 
-        Interlocked.Increment(ref ContextSetups);
+        Pool.CountSetup();
         contextKey = key;
         TheoremProver.FullReset(gen);
         ctx.Reset();
@@ -182,12 +182,6 @@ namespace Microsoft.Boogie
 
     /// <summary>The implementation of the split the checker was last targeted at.</summary>
     public Implementation LastImplementation { get; private set; }
-
-    /// <summary>
-    /// The numbers of contexts set up from their declarations and restarted under /cacheBackground, by
-    /// every checker of the process: totals of the process, not of a pool.
-    /// </summary>
-    public static int ContextSetups, ContextRestarts;
 
     // The context the prover holds: what decides the commands that set it up and its background.
     private ContextKey contextKey;
