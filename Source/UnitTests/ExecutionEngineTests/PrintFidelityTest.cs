@@ -222,7 +222,7 @@ yield procedure {:layer 1} Y() { }
   }
 
   [Test]
-  public async Task VerifyAsTasksRefusesToLeaveAPolymorphicProgramUnmonomorphized()
+  public async Task VerifyAsTasksMonomorphizesAPolymorphicProgram()
   {
     var text = @"
 function F<T>(x: T): T;
@@ -231,9 +231,9 @@ procedure P() { assert F(1) == F(1); }
     var output = new StringWriter();
     using (var engine = ExecutionEngine.CreateWithoutSharedCache(Options("/verifyAsTasks")))
     {
-      Assert.IsFalse(await engine.ProcessProgram(output, Parse(text), "1"));
+      Assert.IsTrue(await engine.ProcessProgram(output, Parse(text), "1"));
     }
-    StringAssert.Contains("/verifyAsTasks does not monomorphize a polymorphic program", output.ToString());
+    StringAssert.Contains("Boogie program verifier finished with 1 verified, 0 errors", output.ToString());
     Assert.AreEqual(await Trailer(text, Options("/typeEncoding:a")),
       await Trailer(text, Options("/typeEncoding:a", "/verifyAsTasks")));
   }

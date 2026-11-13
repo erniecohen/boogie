@@ -267,15 +267,14 @@ the tasks, and report the results as it reports its own: per implementation, wit
 outcome, error and trailer messages, and per split as an assertion batch in `/xml`.  A program then
 gets the preparation, the splits and the queries it gets from a front end; a split's prover log is
 named `<implementation>_split<n>`, as there.  It refuses a program with CIVL declarations, which
-the task pipeline does not support, and a polymorphic program under the monomorphic encoding,
-because `GetVerificationTasks` takes the encoding as given where `ResolveAndTypecheck` would
-monomorphize the program.  Without the option the command line is unchanged.
+the task pipeline does not support. Under the monomorphic encoding, the task API monomorphizes
+a polymorphic program after typechecking, as `ResolveAndTypecheck` does.  Without the option the command line is unchanged.
 
 `Test/commandline/VerifyAsTasks.bpl` verifies a program with and without the option and checks
 that both report the same error and the same counts.  The unit tests
 `PrintFidelityTest.VerifyAsTasks*` check that the option sends the queries of the tasks, that
 without it the command line's queries differ as before, that it counts as the command line does,
-and that it refuses CIVL and unmonomorphized polymorphic programs.
+that it refuses CIVL, and that it monomorphizes polymorphic programs.
 
 ## Structural literals: `/structuralLiterals`
 
@@ -415,3 +414,67 @@ controlled synchronization context to hold the cancelled reader's continuation.
 It starts the next check-sat read, releases exactly two permits, and requires the
 following resource response to complete without another permit. The test fails
 on the old implementation at that assertion, and has bounded waits and cleanup.
+
+## Monomorphization through the task API
+
+`GetVerificationTasks` now monomorphizes a polymorphic program under `/typeEncoding:m`,
+after typechecking and before dead-variable elimination. Previously only the command-line
+`ResolveAndTypecheck` path did so, and front ends could send unspecialized type variables
+to the solver. Programs with unsupported polymorphism or an expanding type cycle raise
+`ArgumentException`, just as resolution/type errors do in this API; the command-line path
+continues to return `FatalError`. Already monomorphic programs skip the transformation.
+An explicitly selected arguments or predicates encoding stays selected in the task API.
+No axiom is added and no default encoding changes.
+
+`MonomorphizationTest` exercises the API with polymorphic functions and quantified axioms,
+a valid proof and an `assert false` control, all three encodings, already monomorphic input,
+and both monomorphization failure statuses. `/verifyAsTasks` uses the repaired API too.
+
+The task API also accepts ground bitvector width proxies left by typechecking an
+already typed expression. `BvConcatExpr.Typecheck` creates a fresh width proxy, but
+an enclosing pretyped application keeps its previous type instantiation and need
+not unify that fresh proxy with a concrete type. `BvTypeProxy.BvBits` specifies the
+stable width after typechecking even when `ProxyFor` is null. Such proxies have no
+free type parameters: the monomorphizability checker accepts them, and the
+monomorphization duplicator materializes `Type.GetBvType(node.BvBits)`. This uses
+the same width as SMT translation already does and adds no fact or axiom. General
+unresolved type proxies remain unsupported. A unit test supplies a program that
+has already been typechecked, then verifies its concatenations and a false control
+through the API. Arguments and predicates encodings are unchanged.
+
+## Monomorphization keeps empty quantifiers and hidden axioms out of the solver
+
+Two defects of `/typeEncoding:m` reported in
+https://github.com/erniecohen/dafny/issues/281, both in `Source/Core/Monomorphization.cs`:
+
+- **A quantifier that binds nothing.** The parser rejects `forall :: e`, but a front end can
+  build such a quantifier through the API. Dafny does, for the prefix predicate of a
+  nullary least predicate. The type erasers of `/typeEncoding:a` and `:p` drop a
+  quantifier left without bound variables. The monomorphizer dropped one only when
+  instantiating a polymorphic quantifier, so a monomorphic empty quantifier reached the
+  solver as `(forall () ...)`. Z3 rejects that, and every task that included the axiom
+  failed with a prover error. `PolymorphicMapAndBinderSubstituter` now replaces such a
+  quantifier by its body, which is equivalent. A program that is already monomorphic
+  skips the monomorphizer in the task API, so an empty quantifier built there still
+  reaches the solver; Dafny's programs are polymorphic, so Dafny does not reach that case.
+- **Hidden axioms.** The monomorphizer splits every axiom at its top-level conjunctions and
+  instantiates polymorphic axioms, and created the new axioms without their `hideable`
+  flag. Under `/typeEncoding:m`, `hide` therefore pruned nothing: every reachable
+  definition axiom was sent, also those of functions the program hides. That is sound,
+  since it only adds facts that hold, but it changes the proof context, and Dafny's
+  `hide *` relies on it to keep contexts small. The split and instantiated axioms now
+  keep the flag. Because hiding now applies, a `reveal` of a polymorphic function must
+  also reach its monomorphized instances: `RevealedState.IsRevealed` looks up an
+  instance's declared function through `OriginalDeclWithFormals`, which the monomorphizer
+  already records. Under the other encodings no function has an original, so pruning is
+  unchanged.
+
+Neither change adds a fact or an axiom, and neither reaches `/typeEncoding:a` or `:p`.
+
+`MonomorphizationTest.TaskApiDropsQuantifiersThatBindNothing` builds an axiom with an
+empty quantifier through the API, as Dafny does, and verifies a proof that uses it and an
+`assert false` control under `/typeEncoding:m` and `:a`. It fails under `:m` without the
+fix. `Test/pruning/RevealMonomorphic.bpl` hides a function with a split axiom and a
+polymorphic function, and runs under `:m` and `:a` with one expected output: the hidden
+assertions fail, and the revealed ones and a control without `hide` verify. Without the
+fix, `:m` verifies all six.

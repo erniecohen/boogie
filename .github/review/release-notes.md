@@ -87,3 +87,19 @@ overlap the next read and make a later resource response wait for an extra permi
 indefinitely. The regression controls the old reader's continuation and requires
 both check-sat replies and the resource reply to complete with exactly two permits.
 See https://github.com/erniecohen/boogie/pull/8#issuecomment-6847527024.
+
+`ExecutionEngine.GetVerificationTasks` now monomorphizes polymorphic input when
+`/typeEncoding:m` is selected, after typechecking and before preparing tasks. Unsupported
+polymorphism and expanding type cycles are rejected with `ArgumentException` instead of
+reaching the solver. Arguments/predicates encoding behavior is unchanged.
+
+Monomorphization recognizes ground bitvector width proxies in already typed
+inputs and materializes their stable width, instead of rejecting valid input as
+unsupported polymorphism. General unresolved type proxies are still rejected.
+
+Under `/typeEncoding:m`, monomorphization replaces a quantifier with no bound variables by its
+body, as the other encodings do, instead of sending an empty quantifier that the solver rejects.
+It also keeps the `hideable` flag on the axioms it splits and instantiates, so that `hide` prunes
+under `:m` as it does under `:a`, and a `reveal` of a polymorphic function covers its instances.
+The arguments and predicates encodings are unchanged.  See `REVIEW.md` and
+https://github.com/erniecohen/dafny/issues/281.
