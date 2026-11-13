@@ -31,11 +31,10 @@ env:
 
 jobs:
   canonical-map-probe:
-    if: ${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/scratch/284-map/probe') }}
+    if: ${{ github.head_ref == 'codex/284-canonical-map-payloads' || github.ref == 'refs/heads/codex/284-canonical-map-payloads' }}
     uses: ./.github/workflows/map-payloads-probe.yml
 
   version:
-    if: ${{ !startsWith(github.ref, 'refs/heads/scratch/284-map/probe') }}
     name: Version
     runs-on: ubuntu-22.04
     timeout-minutes: 10
@@ -49,7 +48,6 @@ jobs:
         run: sh .github/review/version.sh | tee -a "$GITHUB_OUTPUT"
 
   test:
-    if: ${{ !startsWith(github.ref, 'refs/heads/scratch/284-map/probe') }}
     name: Boogie CI (${{ matrix.configuration }}, ${{ matrix.lit_param }})
     runs-on: ubuntu-22.04
     timeout-minutes: 120
@@ -101,7 +99,6 @@ jobs:
           lit --param ${{ matrix.lit_param }} --param boogie_params=-processTimeLimit:300 -v --timeout=300 -D configuration=${{ matrix.configuration }} Test
 
   lean-auto:
-    if: ${{ !startsWith(github.ref, 'refs/heads/scratch/284-map/probe') }}
     name: LeanAuto CI
     runs-on: ubuntu-22.04
     timeout-minutes: 90
@@ -136,7 +133,6 @@ jobs:
           ./testall.sh
 
   packages:
-    if: ${{ !startsWith(github.ref, 'refs/heads/scratch/284-map/probe') }}
     name: Packages
     needs: version
     runs-on: ubuntu-22.04

@@ -22,7 +22,8 @@ procedure Bits(m: [Key]bv8, k: Key, v: bv8) {
 procedure NonNative(m: [Key]Value, k: Key, v: Value) {
   assert m[k := v][k] == v;
 }
-procedure Polymorphic<T>(m: <A>[Key]A, k: Key, v: T) {
+// Instantiate a polymorphic map with a canonical native payload.
+procedure Polymorphic(m: <A>[Key]A, k: Key, v: bool) {
   assert m[k := v][k] == v;
 }
 procedure Negative(m: [Key]bool, k: Key) {
