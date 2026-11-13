@@ -80,3 +80,10 @@ which task depended on machine load, and with it the resource counts of later ta
 waits up to `/solverIdleTimeout:<seconds>` (default 300), a safeguard against a hung solver;
 end of output, an I/O error or a disposed transport also retire the checker.  The hidden
 `/legacySolverIdleTimeout:1` restores the 100 ms wait for comparison.  See `REVIEW.md`.
+
+`UnsatSolver`, the controllable fake solver used by unit tests, now reserves each
+response before waiting for its check-sat permit. A cancelled read could otherwise
+overlap the next read and make a later resource response wait for an extra permit
+indefinitely. The regression controls the old reader's continuation and requires
+both check-sat replies and the resource reply to complete with exactly two permits.
+See https://github.com/erniecohen/boogie/pull/8#issuecomment-6847527024.

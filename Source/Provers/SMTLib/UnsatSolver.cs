@@ -26,9 +26,12 @@ public class UnsatSolver : NoopSolver {
 
 
   protected override async Task<SExpr> GetProverResponse() {
-    if (responses.Peek().Name == "unsat") {
+    // Reserve this reader's response before suspending: a cancelled check may
+    // still have a pending reader when the checker starts its next request.
+    var response = await base.GetProverResponse();
+    if (response?.Name == "unsat") {
       await semaphore.WaitAsync();
     }
-    return await base.GetProverResponse();
+    return response;
   }
 }
