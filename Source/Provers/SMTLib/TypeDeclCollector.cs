@@ -114,6 +114,7 @@ namespace Microsoft.Boogie.SMTLib
     }
 
     private int baselineDepth = -1;
+    private int baselineDecls;
 
     /// <summary>
     /// Marks what is known now as the baseline that <see cref="RestoreBaseline"/> returns to: what a
@@ -122,6 +123,7 @@ namespace Microsoft.Boogie.SMTLib
     public void MarkBaseline()
     {
       baselineDepth = _KnownFunctions.Count;
+      baselineDecls = AllDecls.Count;
       Push();
     }
 
@@ -138,6 +140,7 @@ namespace Microsoft.Boogie.SMTLib
       Pop();
       Push();
       IncDecls.Clear();
+      AllDecls.RemoveRange(baselineDecls, AllDecls.Count - baselineDecls);
       return true;
     }
 

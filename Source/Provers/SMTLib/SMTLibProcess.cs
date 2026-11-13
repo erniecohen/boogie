@@ -13,6 +13,7 @@ namespace Microsoft.Boogie.SMTLib
 {
   public class SMTLibProcess : SMTLibSolver {
     private readonly Process solver;
+    private readonly bool legacySolverIdleTimeout;
     private readonly SMTLibSolverOptions options;
     // Used to synchronise between solver output and the request currently being processed.
     private readonly AsyncQueue<string> solverOutput = new();
@@ -27,6 +28,7 @@ namespace Microsoft.Boogie.SMTLib
     public SMTLibProcess(SMTLibOptions libOptions, SMTLibSolverOptions options)
     {
       this.options = options;
+      legacySolverIdleTimeout = libOptions.LegacySolverIdleTimeout;
       smtProcessId = smtProcessIdSeq++;
 
       var psi = new ProcessStartInfo(options.ExecutablePath(), string.Join(" ", options.SolverArguments))
@@ -354,6 +356,9 @@ namespace Microsoft.Boogie.SMTLib
     {
         if (e.Data == null)
         {
+          // stdout EOF arrives after all buffered lines. Wake the parser that
+          // PingPong actually reads, so process death does not wait for a timeout.
+          if (!legacySolverIdleTimeout) { sexpParser.AddLine(null); }
           return;
         }
 

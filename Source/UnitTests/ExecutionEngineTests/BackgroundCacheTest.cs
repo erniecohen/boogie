@@ -141,7 +141,7 @@ procedure T(x: int)
   {
     foreach (var encoding in new[] { "/typeEncoding:a", "/typeEncoding:p" }) {
       foreach (var order in new[] { "", "/normalizeDeclarationOrder:0", "/randomSeed:7" }) {
-        foreach (var more in new[] { "", "/trackVerificationCoverage", "/vcsCores:4" }) {
+        foreach (var more in new[] { "", "/trackVerificationCoverage", "/vcsCores:4", "/vcsCores:4 /scheduleByImplementation" }) {
           yield return $"{encoding} /prune:1 /vcsSplitOnEveryAssert {order} {more}";
         }
       }
@@ -155,6 +155,8 @@ procedure T(x: int)
   {
     Assert.IsFalse(CommandLineOptions.FromArguments(TextWriter.Null).CacheBackground);
     Assert.IsTrue(Options("/cacheBackground").CacheBackground);
+    Assert.IsFalse(CommandLineOptions.FromArguments(TextWriter.Null).ScheduleByImplementation);
+    Assert.IsTrue(Options("/scheduleByImplementation").ScheduleByImplementation);
   }
 
   private static async Task SameCommands(bool tasks)
@@ -172,6 +174,63 @@ procedure T(x: int)
         Assert.AreEqual(text, actualText, $"{configuration}: {name}");
       }
     }
+  }
+
+  /// <summary>
+  /// Everything one prover gets when a front end starts the program's tasks interleaved: the first
+  /// split of each implementation, then the second of each, and so on.
+  /// </summary>
+  private static async Task<string> InterleavedLog(string arguments)
+  {
+    var options = Options(arguments);
+    var directory = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+    Directory.CreateDirectory(directory);
+    options.ProverLogFilePath = Path.Combine(directory, "solver.smt2");
+    options.ProverOptions.Add("SOLVER=noop");
+    using (var engine = ExecutionEngine.CreateWithoutSharedCache(options)) {
+      var tasks = (await engine.GetVerificationTasks(Parse(options)))
+        .OrderBy(task => task.Split.SplitIndex)
+        .ThenBy(task => task.Split.Implementation.Name, StringComparer.Ordinal)
+        .ToList();
+      await Task.WhenAll(tasks.Select(task => task.TryRun()!.ToTask()).ToList());
+    }
+    var log = await File.ReadAllTextAsync(Path.Combine(directory, "solver.smt2"));
+    Directory.Delete(directory, true);
+    return FromLeastSkolemId(log);
+  }
+
+  /// <summary>The implementations of the checks of a log, in the order they were sent.</summary>
+  private static List<string> CheckedImplementations(string log)
+  {
+    return Regex.Matches(log, @"\(set-info :boogie-vc-id ([^\s)]+)\)")
+      .Select(m => m.Groups[1].Value.Split('$')[0]).ToList();
+  }
+
+  /// <summary>
+  /// /cacheBackground alone does not change which solver gets which check, or in what order: a
+  /// solver keeps native state across (reset), so its resource counts depend on everything it got,
+  /// not only on each check's commands.  One prover's whole log is the same without and with it,
+  /// with the tasks started interleaved.  /scheduleByImplementation is what runs an implementation's
+  /// splits one after the other; the test records that it does.
+  /// </summary>
+  [Test]
+  public async Task OnlyTheSchedulingOptionChangesTheOrderOfChecks()
+  {
+    const string configuration = "/typeEncoding:a /prune:1 /vcsSplitOnEveryAssert /vcsCores:1";
+    var off = await InterleavedLog(configuration);
+    var order = CheckedImplementations(off);
+    Assert.Greater(order.Count, 5);
+    Assert.AreNotEqual(order[0], order[1], "the tasks did not run interleaved: " + string.Join(" ", order));
+
+    var restarts = Microsoft.Boogie.Checker.ContextRestarts;
+    Assert.AreEqual(off, await InterleavedLog($"{configuration} /cacheBackground"));
+
+    var scheduled = CheckedImplementations(await InterleavedLog($"{configuration} /cacheBackground /scheduleByImplementation"));
+    CollectionAssert.AreEquivalent(order, scheduled);
+    // Each implementation's checks run one after the other, after its first.
+    var runs = scheduled.Where((name, i) => i == 0 || scheduled[i - 1] != name).ToList();
+    CollectionAssert.AllItemsAreUnique(runs, string.Join(" ", scheduled));
+    Assert.Greater(Microsoft.Boogie.Checker.ContextRestarts, restarts);
   }
 
   [Test]

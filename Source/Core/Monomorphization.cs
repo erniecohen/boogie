@@ -247,14 +247,8 @@ namespace Microsoft.Boogie
 
     public override Type VisitBvTypeProxy(BvTypeProxy node)
     {
-      if (node.ProxyFor == null)
-      {
-        isMonomorphizable = false;
-      }
-      else
-      {
-        Visit(TypeProxy.FollowProxy(node));
-      }
+      // Bitvector proxies contain width constraints, not free type parameters.
+      // After typechecking BvBits is stable even when ProxyFor is still null.
       return node;
     }
 
@@ -649,7 +643,7 @@ namespace Microsoft.Boogie
         }
         else
         {
-          var newAxiom = new Axiom(axiom.tok, expr, axiom.Comment, axiom.Attributes);
+          var newAxiom = new Axiom(axiom.tok, expr, axiom.Comment, axiom.Attributes, axiom.CanHide);
           if (monomorphizationVisitor.originalAxiomToSplitAxioms.ContainsKey(axiom)) {
             monomorphizationVisitor.originalAxiomToSplitAxioms[axiom].Add(newAxiom);
           }
@@ -746,6 +740,14 @@ namespace Microsoft.Boogie
       var returnExpr = binderExprMonomorphizers.ContainsKey(node)
         ? binderExprMonomorphizers[node].MonomorphicExpr(this)
         : base.VisitBinderExpr(node);
+      if (returnExpr is QuantifierExpr { Dummies.Count: 0, TypeParameters.Count: 0 } emptyQuantifierExpr)
+      {
+        // A quantifier that binds nothing is its body. The type erasers of the other
+        // encodings drop such quantifiers, and InstantiateBinderExpr drops the ones left
+        // empty by instantiation; a front end can also build one directly, and SMT-LIB
+        // rejects a quantifier with an empty list of sorted variables.
+        return emptyQuantifierExpr.Body;
+      }
       if (returnExpr is QuantifierExpr { Triggers: { } } quantifierExpr)
       {
         quantifierExpr.Triggers = VisitTrigger(quantifierExpr.Triggers);
@@ -1083,7 +1085,7 @@ namespace Microsoft.Boogie
 
     public override Type VisitBvTypeProxy(BvTypeProxy node)
     {
-      return VisitType(TypeProxy.FollowProxy(node));
+      return Type.GetBvType(node.BvBits);
     }
 
     public override Expr VisitExpr(Expr node)
@@ -1610,7 +1612,7 @@ namespace Microsoft.Boogie
     private Axiom InstantiateAxiom(Axiom axiom, List<Type> actualTypeParams)
     {
       var axiomExpr = InstantiateBinderExpr((BinderExpr)axiom.Expr, actualTypeParams);
-      var instantiatedAxiom = new Axiom(axiom.tok, axiomExpr, axiom.Comment, axiom.Attributes);
+      var instantiatedAxiom = new Axiom(axiom.tok, axiomExpr, axiom.Comment, axiom.Attributes, axiom.CanHide);
       if (originalAxiomToSplitAxioms.ContainsKey(axiom)) {
         originalAxiomToSplitAxioms[axiom].Add(instantiatedAxiom);
       }

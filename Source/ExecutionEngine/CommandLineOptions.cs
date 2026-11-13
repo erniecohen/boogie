@@ -240,12 +240,15 @@ namespace Microsoft.Boogie
 
     public bool DeterministicLiteralHashes { get; set; }
 
+    public bool LegacyNoncanonicalMapPayloads { get; set; }
+
     public bool StructuralLiterals { get; set; }
 
     public bool VerifyAsTasks { get; set; }
     public bool CacheUsedTypes { get; set; }
     public bool LockFreeExpansion { get; set; }
     public bool CacheBackground { get; set; }
+    public bool ScheduleByImplementation { get; set; }
 
     public bool ImmediatelyAcceptCommands => StratifiedInlining > 0 || ContractInfer;
 
@@ -497,6 +500,10 @@ namespace Microsoft.Boogie
     /// A hidden option that configures a time limit for the whole Boogie CLI invocation
     /// </summary>
     public uint ProcessTimeLimit { get; set; } = 0;
+
+    public uint SolverIdleTimeout { get; set; } = 300;
+
+    public bool LegacySolverIdleTimeout { get; set; }
     public uint TimeLimit { get; set; } = 0; // 0 means no limit
     public uint ResourceLimit { get; set; } = 0; // default to 0
     public uint SmokeTimeout { get; set; } = 10; // default to 10s
@@ -1277,6 +1284,14 @@ namespace Microsoft.Boogie
 
           return true;
 
+        case "legacySolverIdleTimeout":
+          ps.GetIntArgument(x => LegacySolverIdleTimeout = x == 1, 2);
+          return true;
+
+        case "solverIdleTimeout":
+          ps.GetUnsignedNumericArgument(x => SolverIdleTimeout = x, a => 0 < a && a <= 86400);
+          return true;
+
         case "timeLimit":
           ps.GetUnsignedNumericArgument(x => TimeLimit = x, null);
           return true;
@@ -1327,6 +1342,10 @@ namespace Microsoft.Boogie
           ps.GetIntArgument(x => normalizeNames = x);
           return true;
         
+        case "legacyNoncanonicalMapPayloads":
+          ps.GetIntArgument(x => LegacyNoncanonicalMapPayloads = x == 1, 2);
+          return true;
+
         case "deterministicLiteralHashes":
           ps.GetIntArgument(x => DeterministicLiteralHashes = x == 1, 2);
           return true;
@@ -1358,6 +1377,7 @@ namespace Microsoft.Boogie
               ps.CheckBooleanFlag("cacheUsedTypes", x => CacheUsedTypes = x) ||
               ps.CheckBooleanFlag("lockFreeExpansion", x => LockFreeExpansion = x) ||
               ps.CheckBooleanFlag("cacheBackground", x => CacheBackground = x) ||
+              ps.CheckBooleanFlag("scheduleByImplementation", x => ScheduleByImplementation = x) ||
               ps.CheckBooleanFlag("wait", x => Wait = x) ||
               ps.CheckBooleanFlag("trace", x => Verbosity = CoreOptions.VerbosityLevel.Trace) ||
               ps.CheckBooleanFlag("quiet", x => Verbosity = CoreOptions.VerbosityLevel.Quiet) ||
@@ -1981,8 +2001,18 @@ namespace Microsoft.Boogie
                 options as the context it holds, restart that context instead of
                 setting it up again: send the commands that set it up, and its
                 background, as they were sent the first time, without translating,
-                erasing and printing the declarations again.  The solver gets the
-                same commands.
+                erasing and printing the declarations again.  Each solver gets the
+                same commands, in the same order, as without the option.  The
+                declarations are compared by reference: a front end must not change
+                a function, axiom or constant in place once verification has started.
+  /scheduleByImplementation
+                give a prover that comes back to a waiting split of the
+                implementation it last verified, and else to the first split whose
+                implementation no prover is verifying, so that with /cacheBackground
+                more contexts are restarted.  This changes which solver process
+                verifies which split, and in what order; a solver keeps native state
+                across (reset), so resource counts can differ from a run without it,
+                although each check's commands are the same.
   /lockFreeExpansion
                 translate the body of an {:inline} function at each call without
                 holding a lock on the function.  The translation reads the body and
@@ -2175,6 +2205,10 @@ namespace Microsoft.Boogie
   /timeLimit:<num>
                 Limit the number of seconds spent trying to verify
                 each procedure
+  /solverIdleTimeout:<num>
+                Safety timeout in seconds for returning a solver to the pool
+                (default 300, range 1..86400). Independent of /timeLimit.
+                A nonresponsive solver is closed and replaced.
   /rlimit:<num>
                 Limit the Z3 resource spent trying to verify each procedure.
   /errorTrace:<n>

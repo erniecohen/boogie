@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using System.Linq;
+using System.IO;
 using System.Threading;
 using Microsoft.Boogie.VCExprAST;
 using System.Diagnostics;
@@ -60,16 +61,25 @@ namespace Microsoft.Boogie
       status = CheckerStatus.Ready;
     }
 
-    public async Task GoBackToIdle()
+    public Task GoBackToIdle() => GoBackToIdle(TimeProvider.System);
+
+    internal async Task GoBackToIdle(TimeProvider timeProvider)
     {
       Contract.Requires(IsBusy);
 
       status = CheckerStatus.Idle;
       try {
-        await thmProver.GoBackToIdle().WaitAsync(TimeSpan.FromMilliseconds(100));
+        // This is a hang safeguard, not a scheduling deadline. A healthy solver may
+        // take longer than 100 ms to drain output even with no proof time limit.
+        var timeout = Options.LegacySolverIdleTimeout
+          ? TimeSpan.FromMilliseconds(100)
+          : TimeSpan.FromSeconds(Options.SolverIdleTimeout);
+        await thmProver.GoBackToIdle().WaitAsync(timeout, timeProvider);
         Pool.AddChecker(this);
       }
-      catch(TimeoutException) {
+      catch (Exception e) when (e is TimeoutException ||
+                               !Options.LegacySolverIdleTimeout &&
+                               e is ProverDiedException or IOException or ObjectDisposedException) {
         Pool.CheckerDied(this);
         Close();
       }
@@ -173,7 +183,10 @@ namespace Microsoft.Boogie
     /// <summary>The implementation of the split the checker was last targeted at.</summary>
     public Implementation LastImplementation { get; private set; }
 
-    /// <summary>The numbers of contexts set up from their declarations and restarted under /cacheBackground.</summary>
+    /// <summary>
+    /// The numbers of contexts set up from their declarations and restarted under /cacheBackground, by
+    /// every checker of the process: totals of the process, not of a pool.
+    /// </summary>
     public static int ContextSetups, ContextRestarts;
 
     // The context the prover holds: what decides the commands that set it up and its background.

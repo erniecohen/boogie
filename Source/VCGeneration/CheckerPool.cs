@@ -25,7 +25,7 @@ namespace VC
 
     public async Task<Checker> FindCheckerFor(Program program, Split? split, CancellationToken cancellationToken)
     {
-      if (Options.CacheBackground)
+      if (Options.ScheduleByImplementation)
       {
         return await FindCheckerByImplementation(program, split, cancellationToken);
       }
@@ -43,13 +43,14 @@ namespace VC
       }
     }
 
-    // Under /cacheBackground the pool hands out checkers itself instead of through the semaphore.  A
-    // prover restarts a context with the same declarations instead of setting it up again, and the
-    // splits of an implementation often have the same, so a checker that comes back goes to a split
-    // of the implementation it last verified, if one waits, and else to the first split whose
-    // implementation no checker is verifying.  The splits of an implementation then tend to run one
-    // after the other on one checker.  Which checker verifies a split, and when, does not change
-    // what its solver gets.
+    // Under /scheduleByImplementation the pool hands out checkers itself instead of through the
+    // semaphore.  Under /cacheBackground a prover restarts a context with the same declarations
+    // instead of setting it up again, and the splits of an implementation often have the same, so a
+    // checker that comes back goes to a split of the implementation it last verified, if one waits,
+    // and else to the first split whose implementation no checker is verifying.  The splits of an
+    // implementation then tend to run one after the other on one checker.  Each check's commands are
+    // the same, but which solver process gets them, and after which others, is not: a solver keeps
+    // native state across (reset), so resource counts can differ from a run without the option.
     private readonly object gate = new();
     private readonly List<(Split? Split, TaskCompletionSource<Checker?> Ready)> waiters = new();
     private readonly Dictionary<Implementation, int> running = new();
@@ -63,6 +64,10 @@ namespace VC
       TaskCompletionSource<Checker?>? ready = null;
       lock (gate)
       {
+        if (disposed)
+        {
+          throw new ObjectDisposedException(nameof(CheckerPool));
+        }
         if (0 < free && waiters.Count == 0)
         {
           free--;
@@ -110,6 +115,14 @@ namespace VC
       }
       catch (Exception)
       {
+        if (checker == null && split != null)
+        {
+          // not created: the split was counted as running, but on no checker
+          lock (gate)
+          {
+            MarkStopped(split.Implementation);
+          }
+        }
         Returned(checker, checker is { IsClosed: false } ? checker : null);
         throw;
       }
@@ -123,6 +136,14 @@ namespace VC
       }
     }
 
+    private void MarkStopped(Implementation implementation)
+    {
+      if (--running[implementation] == 0)
+      {
+        running.Remove(implementation);
+      }
+    }
+
     /// <summary>
     /// A checker handed out comes back: available again, or null when it died or could not be made.
     /// It goes to a waiting split, or becomes free.
@@ -133,10 +154,7 @@ namespace VC
       {
         if (handedOut != null && runningOn.Remove(handedOut, out var implementation))
         {
-          if (--running[implementation] == 0)
-          {
-            running.Remove(implementation);
-          }
+          MarkStopped(implementation);
         }
 
         var index = -1;
@@ -220,12 +238,15 @@ namespace VC
 
     public void Dispose()
     {
+      // availableCheckers before gate, as in AddChecker: the scheduling by implementation takes and
+      // puts back available checkers under gate.
       lock(availableCheckers)
+      lock(gate)
       {
         disposed = true;
         if (Options.Trace && Options.CacheBackground)
         {
-          Options.OutputWriter.WriteLine("Background cache: {0} contexts restarted, {1} set up",
+          Options.OutputWriter.WriteLine("Background cache, process totals: {0} contexts restarted, {1} set up",
             Checker.ContextRestarts, Checker.ContextSetups);
         }
         checkersSemaphore.Dispose();
@@ -260,7 +281,7 @@ namespace VC
           return;
         }
 
-        if (Options.CacheBackground)
+        if (Options.ScheduleByImplementation)
         {
           Returned(checker, checker);
           return;
@@ -272,7 +293,7 @@ namespace VC
 
     public void CheckerDied(Checker checker)
     {
-      if (Options.CacheBackground)
+      if (Options.ScheduleByImplementation)
       {
         Returned(checker, null);
         return;

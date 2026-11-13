@@ -83,6 +83,39 @@ and the fix sends the solver the same queries).  The job `packages` builds and p
 the tag names the version and attaches the packages, with their sha256 sums in
 `SHA256SUMS`, to a GitHub release.
 
+## Returning pooled solvers to idle
+
+After a proof, `Checker.GoBackToIdle` waits for the solver's existing ping before
+returning its checker to the pool. Its former 100 ms deadline retired even healthy
+solvers when output draining or scheduling took longer. This changed physical
+solver histories independently of the proof time limit, including `/timeLimit:0`.
+See https://github.com/erniecohen/dafny/issues/287 .
+
+The default now uses `/solverIdleTimeout:<seconds>`, a separate hang safeguard
+(default 300 seconds, accepted range 1..86400). A handshake taking, for example,
+one second keeps its solver. A handshake that never replies is closed at the
+safety bound and its pool slot is released for a replacement. Stdout EOF wakes
+the response parser after buffered output drains; EOF, I/O failure and a disposed
+transport also retire the checker. The safety bound is still a wall-clock limit:
+this removes the short scheduling deadline, and does not promise retention under
+arbitrarily long stalls. No extra request, assertion or solver option is sent.
+Native solver history survives logical reset, so changes to reuse can change
+resource counts of later tasks even when their own command bytes agree.
+
+This determinism fix is on by default. The hidden `/legacySolverIdleTimeout:1`
+restores the original 100 ms wait, timeout-only recovery and EOF handling; it
+ignores `/solverIdleTimeout`. `/legacySolverIdleTimeout:0` selects the new policy.
+The legacy option is for comparison and migration, not ordinary operation.
+
+`IdleHandshakeTest` withholds a fake solver's pong and advances a manual clock:
+the original/legacy policy closes it at exactly 100 ms, while the default keeps
+it after one second and reuses it only after the pong. Failure and hang tests
+check replacement and a usable pool slot. A real child process consumes a ping
+and exits without replying, checking EOF propagation without a loaded machine.
+Successful fake handshakes send identical complete command sequences in both
+modes. `Test/commandline/IdleHandshake.bpl` checks the same 1 verified / 1 error
+result in both modes, including an inhabited failing false assertion.
+
 ## Deterministic numeric declaration hashes
 
 `/deterministicLiteralHashes:1` opts into process-independent hashes for numeric
@@ -234,15 +267,14 @@ the tasks, and report the results as it reports its own: per implementation, wit
 outcome, error and trailer messages, and per split as an assertion batch in `/xml`.  A program then
 gets the preparation, the splits and the queries it gets from a front end; a split's prover log is
 named `<implementation>_split<n>`, as there.  It refuses a program with CIVL declarations, which
-the task pipeline does not support, and a polymorphic program under the monomorphic encoding,
-because `GetVerificationTasks` takes the encoding as given where `ResolveAndTypecheck` would
-monomorphize the program.  Without the option the command line is unchanged.
+the task pipeline does not support. Under the monomorphic encoding, the task API monomorphizes
+a polymorphic program after typechecking, as `ResolveAndTypecheck` does.  Without the option the command line is unchanged.
 
 `Test/commandline/VerifyAsTasks.bpl` verifies a program with and without the option and checks
 that both report the same error and the same counts.  The unit tests
 `PrintFidelityTest.VerifyAsTasks*` check that the option sends the queries of the tasks, that
 without it the command line's queries differ as before, that it counts as the command line does,
-and that it refuses CIVL and unmonomorphized polymorphic programs.
+that it refuses CIVL, and that it monomorphizes polymorphic programs.
 
 ## Structural literals: `/structuralLiterals`
 
@@ -335,6 +367,118 @@ with declaration normalization, without it and with a random seed, and with and 
 the cached types come in another order.  `Test/commandline/SplitSetup.bpl` compares the command
 streams of the command line with `cmp`.
 
+## Canonical payloads in the arguments encoding's map rows
+
+The same-index read-over-write row now requires native-result payloads to be
+canonical: for each used native sort B, `resultType == BType` implies
+`B2U(U2B(value)) == value`. The result type code is instantiated from the map
+skeleton's actual free and bound type parameters, using the existing cast
+functions. Non-native result codes impose no premise. The other-index row,
+left inverses and cast normalization are unchanged.
+
+This is a weakening only. A statically native store supplies `B2U(b)`, which
+satisfies the premise by the existing left inverse. The old unrestricted row,
+together with decoded Boolean extensionality, made the Boolean decoder injective
+on all raw values, bounding the common carrier to two elements. Restricting the
+row removes that derivation; it does not establish a complete soundness theorem
+for native indexes, polymorphic maps, or the entire translated Dafny theory.
+See https://github.com/erniecohen/dafny/issues/284.
+
+The hidden `/legacyNoncanonicalMapPayloads:1` option restores the original row
+for comparison and migration only. It is off by default. The regression
+`Test/test21/issue-284-canonical-payloads.bpl` retains native, non-native and
+polymorphic store laws and a failing false assertion. The supplied research
+witnesses and SMT obligations are retained under `Test/test21/issue-284-evidence/`.
+
+## Reserving fake-solver responses before waiting
+
+`UnsatSolver`, used to control check-sat replies in unit tests, formerly inspected
+the next response, waited on its semaphore, and only then removed that response
+from the queue. Cancelling a check-sat wrapper leaves the underlying read alive.
+When the next run starts, both reads can inspect the same queue head. If the old
+reader's continuation is delayed, the new reader can consume the first unsat and
+start its resource request while the second unsat is still queued. The resource
+request then waits for a third check-sat permit, although its own response is
+already queued. The two permits released by the cancellation test cannot finish
+that read.
+
+The fake solver now removes and reserves each response before waiting on the
+semaphore, and waits only when its reserved response is unsat. This changes no
+real solver transport, idle-handshake policy, verification condition or axiom.
+It is a candidate explanation for the intermittent test hang discussed at
+https://github.com/erniecohen/boogie/pull/8#issuecomment-6847527024; the original
+CI dump was not retained, so that attribution remains unconfirmed.
+
+`UnsatSolverTest.CancelledReaderDoesNotGateTheNextResourceResponse` uses a
+controlled synchronization context to hold the cancelled reader's continuation.
+It starts the next check-sat read, releases exactly two permits, and requires the
+following resource response to complete without another permit. The test fails
+on the old implementation at that assertion, and has bounded waits and cleanup.
+
+## Monomorphization through the task API
+
+`GetVerificationTasks` now monomorphizes a polymorphic program under `/typeEncoding:m`,
+after typechecking and before dead-variable elimination. Previously only the command-line
+`ResolveAndTypecheck` path did so, and front ends could send unspecialized type variables
+to the solver. Programs with unsupported polymorphism or an expanding type cycle raise
+`ArgumentException`, just as resolution/type errors do in this API; the command-line path
+continues to return `FatalError`. Already monomorphic programs skip the transformation.
+An explicitly selected arguments or predicates encoding stays selected in the task API.
+No axiom is added and no default encoding changes.
+
+`MonomorphizationTest` exercises the API with polymorphic functions and quantified axioms,
+a valid proof and an `assert false` control, all three encodings, already monomorphic input,
+and both monomorphization failure statuses. `/verifyAsTasks` uses the repaired API too.
+
+The task API also accepts ground bitvector width proxies left by typechecking an
+already typed expression. `BvConcatExpr.Typecheck` creates a fresh width proxy, but
+an enclosing pretyped application keeps its previous type instantiation and need
+not unify that fresh proxy with a concrete type. `BvTypeProxy.BvBits` specifies the
+stable width after typechecking even when `ProxyFor` is null. Such proxies have no
+free type parameters: the monomorphizability checker accepts them, and the
+monomorphization duplicator materializes `Type.GetBvType(node.BvBits)`. This uses
+the same width as SMT translation already does and adds no fact or axiom. General
+unresolved type proxies remain unsupported. A unit test supplies a program that
+has already been typechecked, then verifies its concatenations and a false control
+through the API. Arguments and predicates encodings are unchanged.
+
+## Monomorphization keeps empty quantifiers and hidden axioms out of the solver
+
+Two defects of `/typeEncoding:m` reported in
+https://github.com/erniecohen/dafny/issues/281, both in `Source/Core/Monomorphization.cs`:
+
+- **A quantifier that binds nothing.** The parser rejects `forall :: e`, but a front end can
+  build such a quantifier through the API. Dafny does, for the prefix predicate of a
+  nullary least predicate. The type erasers of `/typeEncoding:a` and `:p` drop a
+  quantifier left without bound variables. The monomorphizer dropped one only when
+  instantiating a polymorphic quantifier, so a monomorphic empty quantifier reached the
+  solver as `(forall () ...)`. Z3 rejects that, and every task that included the axiom
+  failed with a prover error. `PolymorphicMapAndBinderSubstituter` now replaces such a
+  quantifier by its body, which is equivalent. A program that is already monomorphic
+  skips the monomorphizer in the task API, so an empty quantifier built there still
+  reaches the solver; Dafny's programs are polymorphic, so Dafny does not reach that case.
+- **Hidden axioms.** The monomorphizer splits every axiom at its top-level conjunctions and
+  instantiates polymorphic axioms, and created the new axioms without their `hideable`
+  flag. Under `/typeEncoding:m`, `hide` therefore pruned nothing: every reachable
+  definition axiom was sent, also those of functions the program hides. That is sound,
+  since it only adds facts that hold, but it changes the proof context, and Dafny's
+  `hide *` relies on it to keep contexts small. The split and instantiated axioms now
+  keep the flag. Because hiding now applies, a `reveal` of a polymorphic function must
+  also reach its monomorphized instances: `RevealedState.IsRevealed` looks up an
+  instance's declared function through `OriginalDeclWithFormals`, which the monomorphizer
+  already records. Under the other encodings no function has an original, so pruning is
+  unchanged.
+
+Neither change adds a fact or an axiom, and neither reaches `/typeEncoding:a` or `:p`.
+
+`MonomorphizationTest.TaskApiDropsQuantifiersThatBindNothing` builds an axiom with an
+empty quantifier through the API, as Dafny does, and verifies a proof that uses it and an
+`assert false` control under `/typeEncoding:m` and `:a`. It fails under `:m` without the
+fix. `Test/pruning/RevealMonomorphic.bpl` hides a function with a split axiom and a
+polymorphic function, and runs under `:m` and `:a` with one expected output: the hidden
+assertions fail, and the revealed ones and a control without `hide` verify. Without the
+fix, `:m` verifies all six.
+
 ## Restarting a context instead of setting it up again: `/cacheBackground`
 
 Under pruning, `Checker.Target` sets a prover up for every split.  It does a `FullReset`, then
@@ -369,13 +513,23 @@ The state the context's checks start from comes back to what it was after the ba
 A prover that has not finished a check of its context, or had errors, sets it up again, and so
 does the batch mode prover, which does not restart contexts.
 
-Without the option, which checker verifies a split does not matter, so the pool hands out the last
-one made available.  Under it, a checker that comes back goes to a waiting split of the
-implementation it last verified, if there is one.  Else it goes to the first waiting split whose
-implementation no checker is verifying.  An implementation's splits then tend to run one after the
-other on one prover, and its context can be restarted.  On `Test/dafny/Seq.bpl` split on every
-assertion (612 splits) through the tasks with 4 cores, 359 contexts are restarted with this and 179
-without it; one prover restarts 364.
+`/cacheBackground` does not change which checker verifies a split, or when: the pool hands out
+the last checker made available, as without it.  Each solver therefore gets the same commands in the
+same order as without the option, so its whole history, including the native state it keeps across
+`(reset)` (see "Returning pooled solvers to idle"), is the same, and so are its resource counts.  A
+context is restarted only when a checker's next split happens to have the key it holds: with one
+core and the command line, which verifies an implementation's splits one after the other, that is
+most splits.
+
+The separate opt-in `/scheduleByImplementation` makes it so more often.  Under it, a checker that
+comes back goes to a waiting split of the implementation it last verified, if there is one.  Else
+it goes to the first waiting split whose implementation no checker is verifying.  An
+implementation's splits then tend to run one after the other on one prover, and its context can be
+restarted.  On `Test/dafny/Seq.bpl` split on every assertion (612 splits) through the tasks with 4
+cores, 359 contexts are restarted with both options and 179 with `/cacheBackground` alone; one
+prover restarts 364.  Each check's commands are still the same, but which solver process gets them,
+and after which others, is not, so resource counts can differ from a run without the option, as
+they can between runs with several cores.
 
 The unit tests `BackgroundCacheTest` compare every log of a program, without and with the option,
 through the tasks and through the command line.  The program has implementations with several
@@ -385,8 +539,17 @@ reveal, a seed of its own and a failing assertion.  The configurations are:
 - both encodings;
 - with declaration normalization, without it and with a seed;
 - with `/trackVerificationCoverage` and with 4 cores;
-- with pruning off.
+- with pruning off;
+- with 4 cores and `/scheduleByImplementation`.
 
 The tests check that contexts were restarted, and they fail if the key leaves out the SMT options.
+`OnlyTheSchedulingOptionChangesTheOrderOfChecks` starts the tasks interleaved, the first split of
+each implementation, then the second of each, and so on, on one prover.  The prover's whole log is
+the same without `/cacheBackground` and with it; with `/scheduleByImplementation` too, each
+implementation's checks run one after the other.  The test fails if `/cacheBackground` alone
+schedules by implementation.
+
+The key compares declarations by reference, as `/lockFreeExpansion` reads them: a front end must
+not change a function, axiom or constant in place once verification has started.
 `Test/commandline/BackgroundCache.bpl` compares the whole command stream with `cmp`, with the noop
 solver and with Z3, whose unsat cores `/trackVerificationCoverage` asks for.

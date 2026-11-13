@@ -68,8 +68,46 @@ of each declaration's types, instead of visiting the whole program for every spl
 opt-in `/lockFreeExpansion` expands `{:inline}` functions without a lock that made provers wait
 for each other.  Neither changes what the solver gets.  See `REVIEW.md`.
 
+- Under `/typeEncoding:a`, restrict same-index read-over-write for native-result
+  maps to canonical stored payloads. This removes the known contradiction with
+  decoded Boolean-map extensionality. The hidden `/legacyNoncanonicalMapPayloads:1`
+  option restores the inconsistent row for comparison only.
+
+After a proof, a pooled solver's checker no longer goes back to idle under a 100 ms deadline.
+A healthy solver whose idle handshake took longer was retired, so which physical solver ran
+which task depended on machine load, and with it the resource counts of later tasks
+([erniecohen/dafny#287](https://github.com/erniecohen/dafny/issues/287)).  The handshake now
+waits up to `/solverIdleTimeout:<seconds>` (default 300), a safeguard against a hung solver;
+end of output, an I/O error or a disposed transport also retire the checker.  The hidden
+`/legacySolverIdleTimeout:1` restores the 100 ms wait for comparison.  See `REVIEW.md`.
+
+`UnsatSolver`, the controllable fake solver used by unit tests, now reserves each
+response before waiting for its check-sat permit. A cancelled read could otherwise
+overlap the next read and make a later resource response wait for an extra permit
+indefinitely. The regression controls the old reader's continuation and requires
+both check-sat replies and the resource reply to complete with exactly two permits.
+See https://github.com/erniecohen/boogie/pull/8#issuecomment-6847527024.
+
+`ExecutionEngine.GetVerificationTasks` now monomorphizes polymorphic input when
+`/typeEncoding:m` is selected, after typechecking and before preparing tasks. Unsupported
+polymorphism and expanding type cycles are rejected with `ArgumentException` instead of
+reaching the solver. Arguments/predicates encoding behavior is unchanged.
+
+Monomorphization recognizes ground bitvector width proxies in already typed
+inputs and materializes their stable width, instead of rejecting valid input as
+unsupported polymorphism. General unresolved type proxies are still rejected.
+
+Under `/typeEncoding:m`, monomorphization replaces a quantifier with no bound variables by its
+body, as the other encodings do, instead of sending an empty quantifier that the solver rejects.
+It also keeps the `hideable` flag on the axioms it splits and instantiates, so that `hide` prunes
+under `:m` as it does under `:a`, and a `reveal` of a polymorphic function covers its instances.
+The arguments and predicates encodings are unchanged.  See `REVIEW.md` and
+https://github.com/erniecohen/dafny/issues/281.
+
 The new opt-in `/cacheBackground` restarts a prover's context for a split whose pruned declarations,
 seed, type encoding types and SMT options are those of the context it holds, instead of
-translating, erasing and printing them again, and sends the solver the same commands, byte for
-byte.  The checker pool then lets an implementation's splits run one after the other on one prover.
-See `REVIEW.md`.
+translating, erasing and printing them again.  Each solver gets the same commands, byte for byte,
+in the same order, so resource counts are unchanged.  The separate opt-in
+`/scheduleByImplementation` lets an implementation's splits run one after the other on one prover,
+so that more contexts are restarted; it changes which solver process verifies which split, so
+resource counts can differ from a run without it.  See `REVIEW.md`.

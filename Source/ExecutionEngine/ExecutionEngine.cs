@@ -220,17 +220,6 @@ namespace Microsoft.Boogie
         return true;
       }
 
-      // ResolveAndTypecheck monomorphizes a polymorphic program, or switches a monomorphic one to
-      // the monomorphic encoding; GetVerificationTasks takes the encoding as given, as front ends
-      // that choose /typeEncoding:a or :p expect.
-      if (Options.TypeEncodingMethod == CoreOptions.TypeEncoding.Monomorphic && !MonomorphismChecker.IsMonomorphic(program))
-      {
-        Options.Printer.ErrorWriteLine(output,
-          "{0}: /verifyAsTasks does not monomorphize a polymorphic program; choose /typeEncoding:a or /typeEncoding:p",
-          GetFileNameForConsole(Options, bplFileName));
-        return false;
-      }
-
       var stats = new PipelineStatistics();
       if (!Options.Verify)
       {
@@ -875,6 +864,22 @@ namespace Microsoft.Boogie
       if (typeErrors > 0)
       {
         throw new ArgumentException($"Boogie program had {typeErrors} type errors:\n{GetErrorsString()}");
+      }
+
+      // Front ends choose their encoding explicitly. Unlike ResolveAndTypecheck, do not
+      // switch an already monomorphic program from the arguments/predicates encoding.
+      if (Options.TypeEncodingMethod == CoreOptions.TypeEncoding.Monomorphic &&
+          !MonomorphismChecker.IsMonomorphic(program))
+      {
+        var status = Monomorphizer.Monomorphize(Options, program);
+        if (status != MonomorphizableStatus.Monomorphizable)
+        {
+          // ResolveAndTypecheck returns FatalError for these cases. This API reports
+          // invalid input with ArgumentException, as it does for resolution/type errors.
+          throw new ArgumentException(status == MonomorphizableStatus.UnhandledPolymorphism
+            ? "Unable to monomorphize input program: unhandled polymorphic features detected"
+            : "Unable to monomorphize input program: expanding type cycle detected");
+        }
       }
 
       EliminateDeadVariables(program);

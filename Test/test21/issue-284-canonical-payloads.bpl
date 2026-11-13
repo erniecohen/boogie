@@ -1,0 +1,32 @@
+// https://github.com/erniecohen/dafny/issues/284
+// RUN: %boogie /typeEncoding:a /proverOpt:O:smt.mbqi=true /proverOpt:O:smt.mbqi.max_iterations=10 /prune:0 /normalizeDeclarationOrder:0 %s > %t
+// RUN: %OutputCheck --file-to-check "%t" "%s"
+// RUN: %boogie /typeEncoding:a /proverOpt:O:smt.mbqi=true /proverOpt:O:smt.mbqi.max_iterations=10 /legacyNoncanonicalMapPayloads:1 /prune:0 /normalizeDeclarationOrder:0 %s > %t
+// RUN: %OutputCheck --file-to-check "%t" "%s"
+// CHECK: Boogie program verifier finished with 6 verified, 1 error
+
+type Key;
+type Value;
+procedure Boolean(m: [Key]bool, k: Key, v: bool) {
+  assert m[k := v][k] == v;
+}
+procedure Integer(m: [Key]int, k: Key, v: int) {
+  assert m[k := v][k] == v;
+}
+procedure Real(m: [Key]real, k: Key, v: real) {
+  assert m[k := v][k] == v;
+}
+procedure Bits(m: [Key]bv8, k: Key, v: bv8) {
+  assert m[k := v][k] == v;
+}
+procedure NonNative(m: [Key]Value, k: Key, v: Value) {
+  assert m[k := v][k] == v;
+}
+// Instantiate a polymorphic map with a canonical native payload.
+procedure Polymorphic(m: <A>[Key]A, k: Key, v: bool) {
+  assert m[k := v][k] == v;
+}
+procedure Negative(m: [Key]bool, k: Key) {
+  assert m[k := true][k];
+  assert false;
+}
