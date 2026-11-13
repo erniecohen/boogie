@@ -2,9 +2,11 @@
 # Dafny's standard library, before and after /cacheBackground, under workstation and server GC.
 #
 # Dafny is the upstream 4.11.0 release from nuget.org, which builds against Boogie 3.5.5, with
-# its Boogie assemblies replaced by this line's: `base` is review/3.5.5 at 45a8869 with
+# its Boogie assemblies replaced by this line's: `base` is review/3.5.5 at a659664 with
 # /cacheUsedTypes /lockFreeExpansion; `fix` is this branch with the same options; `new` is this
-# branch with /cacheBackground too.  Std is the program in the release's
+# branch with /cacheBackground too; `sched` adds /scheduleByImplementation.  With Z3, each run's
+# per-check resource counts are compared with base's, and base is run twice under server GC to
+# show how much they vary between runs with 4 cores.  Std is the program in the release's
 # DafnyStandardLibraries.doo, with the options of its manifest.
 name: measure-241
 
@@ -28,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { path: new, fetch-depth: 0 }
       - uses: actions/checkout@v4
-        with: { path: base, ref: 45a8869bb43456f126577f5ba6fd24725ed6e4d9 }
+        with: { path: base, ref: a65966416c15b8b2e865a02199ea9021d38f8032 }
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: '8.0.x' }
       - name: Tools
@@ -52,14 +54,18 @@ jobs:
           mkdir std && cd std && unzip -q ../pkg/tools/net8.0/any/DafnyStandardLibraries.doo && cp program ../std.dfy
       - name: Restarted contexts
         run: |
-          timeout 900 dotnet dafny-new/DafnyDriver.dll verify std.dfy --cores $(nproc) --solver-path ./z3 --standard-libraries false --enforce-determinism --reads-clauses-on-methods --track-print-effects --unicode-char true --allow-warnings --boogie /proverOpt:SOLVER=noop --boogie /cacheUsedTypes --boogie /lockFreeExpansion --boogie /cacheBackground --boogie /trace > trace.txt 2>&1 || true
-          grep "Background cache\|Dafny program verifier finished" trace.txt | tee restarts.md
+          for s in "" "--boogie /scheduleByImplementation"; do
+            echo "/cacheBackground $s" | tee -a restarts.md
+            timeout 900 dotnet dafny-new/DafnyDriver.dll verify std.dfy --cores $(nproc) --solver-path ./z3 --standard-libraries false --enforce-determinism --reads-clauses-on-methods --track-print-effects --unicode-char true --allow-warnings --boogie /proverOpt:SOLVER=noop --boogie /cacheUsedTypes --boogie /lockFreeExpansion --boogie /cacheBackground $s --boogie /trace > trace.txt 2>&1 || true
+            grep "Background cache\|Dafny program verifier finished" trace.txt | tee -a restarts.md
+          done
       - name: Run variants
         run: |
           cores=$(nproc)
           common="verify std.dfy --cores $cores --solver-path ./z3 --standard-libraries false --enforce-determinism --reads-clauses-on-methods --track-print-effects --unicode-char true --allow-warnings --verification-time-limit 60"
           opts="--boogie /cacheUsedTypes --boogie /lockFreeExpansion"
           cache="--boogie /cacheBackground"
+          sched="--boogie /scheduleByImplementation"
           noop="--boogie /proverOpt:SOLVER=noop"
           run() { # name gc dafny extra...
             name=$1; gc=$2; d=$3; shift 3
@@ -71,11 +77,20 @@ jobs:
             run noop-base-gc$gc-r$rep $gc base $noop $opts
             run noop-fix-gc$gc-r$rep $gc new $noop $opts
             run noop-new-gc$gc-r$rep $gc new $noop $opts $cache
+            run noop-sched-gc$gc-r$rep $gc new $noop $opts $cache $sched
           done; done
-          # With Z3.
+          # With Z3, logging each check's resource count.
+          ru() { echo "--log-format"; echo "csv;LogFileName=$PWD/ru-$1.csv"; }
           for gc in 0 1; do
-            run z3-base-gc$gc $gc base $opts
-            run z3-new-gc$gc $gc new $opts $cache
+            run z3-base-gc$gc $gc base $opts $(ru z3-base-gc$gc)
+            run z3-new-gc$gc $gc new $opts $cache $(ru z3-new-gc$gc)
+            run z3-sched-gc$gc $gc new $opts $cache $sched $(ru z3-sched-gc$gc)
+          done
+          run z3-base-gc1-r2 1 base $opts $(ru z3-base-gc1-r2)
+          for gc in 0 1; do
+            more=""; [ $gc = 1 ] && more="base-again=ru-z3-base-gc1-r2.csv"
+            python3 new/.github/measure/ru.py base=ru-z3-base-gc$gc.csv $more new=ru-z3-new-gc$gc.csv sched=ru-z3-sched-gc$gc.csv > ru-gc$gc.md || true
+            echo "GC $gc"; cat ru-gc$gc.md
           done
       - name: Allocation, GC pauses and allocation sites
         run: |
@@ -97,6 +112,7 @@ jobs:
           python3 new/.github/measure/summary.py runs.txt > summary.md || true
           cat summary.md
           { echo "## Runs"; cat summary.md; echo; echo "## Restarted contexts"; cat restarts.md
+            for f in ru-gc*.md; do echo; echo "## Resource counts per check, $f"; cat $f; done
             for f in alloc-*.md; do echo; echo "## $f"; head -60 $f; done; } >> $GITHUB_STEP_SUMMARY || true
       - uses: actions/upload-artifact@v4
         if: always()
@@ -108,4 +124,6 @@ jobs:
             out-*.txt
             restarts.md
             summary.md
+            ru-*.csv
+            ru-*.md
             alloc-*.md
