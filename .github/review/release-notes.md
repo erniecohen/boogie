@@ -72,3 +72,11 @@ for each other.  Neither changes what the solver gets.  See `REVIEW.md`.
   maps to canonical stored payloads. This removes the known contradiction with
   decoded Boolean-map extensionality. The hidden `/legacyNoncanonicalMapPayloads:1`
   option restores the inconsistent row for comparison only.
+
+After a proof, a pooled solver's checker no longer goes back to idle under a 100 ms deadline.
+A healthy solver whose idle handshake took longer was retired, so which physical solver ran
+which task depended on machine load, and with it the resource counts of later tasks
+([erniecohen/dafny#287](https://github.com/erniecohen/dafny/issues/287)).  The handshake now
+waits up to `/solverIdleTimeout:<seconds>` (default 300), a safeguard against a hung solver;
+end of output, an I/O error or a disposed transport also retire the checker.  The hidden
+`/legacySolverIdleTimeout:1` restores the 100 ms wait for comparison.  See `REVIEW.md`.
