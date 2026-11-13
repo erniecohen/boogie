@@ -12,6 +12,14 @@ namespace Microsoft.Boogie.TypeErasure
   public class TypeAxiomBuilderArguments : TypeAxiomBuilderIntBoolU
   {
     private CoreOptions options;
+    internal IReadOnlyList<Type> NativeTypes { get; private set; } = Array.Empty<Type>();
+
+    public override void Setup(List<Type> usedTypes)
+    {
+      NativeTypes = usedTypes.Where(UnchangedType).ToArray();
+      base.Setup(usedTypes);
+    }
+
     public TypeAxiomBuilderArguments(VCExpressionGenerator gen, CoreOptions options)
       : base(gen)
     {
@@ -28,6 +36,7 @@ namespace Microsoft.Boogie.TypeErasure
     {
       Contract.Requires(builder != null);
       this.options = builder.options;
+      NativeTypes = builder.NativeTypes;
       Typed2UntypedFunctions =
         new Dictionary<Function, Function>(builder.Typed2UntypedFunctions);
 
@@ -253,7 +262,7 @@ namespace Microsoft.Boogie.TypeErasure
       select = HelperFuns.BoogieFunction(baseName + "Select", selectTypes);
       store = HelperFuns.BoogieFunction(baseName + "Store", storeTypes);
       AxBuilder.AddTypeAxiom(GenMapAxiom0(select, store,
-        abstractedType.TypeParameters.Count, abstractedType.FreeVariables.Count));
+        abstractedType.TypeParameters.Count, abstractedType.FreeVariables.Count, abstractedType));
       AxBuilder.AddTypeAxiom(GenMapAxiom1(select, store,
         abstractedType.TypeParameters.Count, abstractedType.FreeVariables.Count));
     }
@@ -300,7 +309,7 @@ namespace Microsoft.Boogie.TypeErasure
       int mapTypeParamNum,
       // free type variables in the map
       // type (abstraction)
-      int mapAbstractionVarNum)
+      int mapAbstractionVarNum, MapType abstractedType)
     {
       Contract.Requires(select != null);
       Contract.Requires(store != null);
@@ -347,6 +356,31 @@ namespace Microsoft.Boogie.TypeErasure
       VCExpr
         eq = Gen.Eq(selectExpr, val);
       Contract.Assert(eq != null);
+      if (!options.LegacyNoncanonicalMapPayloads &&
+          (abstractedType.Result.IsVariable || AxBuilder.UnchangedType(abstractedType.Result)))
+      {
+        // The result type may be a skeleton parameter instantiated by a native
+        // sort. Only its canonical payloads have the raw read-over-write law.
+        // Non-native results impose no extra premise. Use the actual type-code
+        // terms and existing casts, never an uninterpreted canonicality predicate.
+        var mapping = new Dictionary<TypeVariable, VCExpr>();
+        int typeIndex = 0;
+        foreach (var variable in abstractedType.FreeVariables.Concat(abstractedType.TypeParameters))
+        {
+          mapping.Add(variable, types[typeIndex++]);
+        }
+        var resultType = AxBuilder.Type2Term(abstractedType.Result, mapping);
+        VCExpr canonical = VCExpressionGenerator.True;
+        foreach (var nativeType in AxBuilderArguments.NativeTypes)
+        {
+          var nativeCode = AxBuilder.Type2Term(nativeType, mapping);
+          var decoded = AxBuilderArguments.Cast(val, nativeType);
+          var encoded = AxBuilderArguments.Cast(decoded, AxBuilder.U);
+          canonical = Gen.AndSimp(canonical,
+            Gen.Implies(Gen.Eq(resultType, nativeCode), Gen.Eq(encoded, val)));
+        }
+        eq = Gen.ImpliesSimp(canonical, eq);
+      }
       return Gen.Forall(quantifiedVars, new List<VCTrigger>(), "mapAx0:" + select.Name, 0, eq);
     }
 

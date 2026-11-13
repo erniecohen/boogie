@@ -334,3 +334,26 @@ with declaration normalization, without it and with a random seed, and with and 
 `/vcsSplitOnEveryAssert`, through the task pipeline and through the command line.  They fail if
 the cached types come in another order.  `Test/commandline/SplitSetup.bpl` compares the command
 streams of the command line with `cmp`.
+
+## Canonical payloads in the arguments encoding's map rows
+
+The same-index read-over-write row now requires native-result payloads to be
+canonical: for each used native sort B, `resultType == BType` implies
+`B2U(U2B(value)) == value`. The result type code is instantiated from the map
+skeleton's actual free and bound type parameters, using the existing cast
+functions. Non-native result codes impose no premise. The other-index row,
+left inverses and cast normalization are unchanged.
+
+This is a weakening only. A statically native store supplies `B2U(b)`, which
+satisfies the premise by the existing left inverse. The old unrestricted row,
+together with decoded Boolean extensionality, made the Boolean decoder injective
+on all raw values, bounding the common carrier to two elements. Restricting the
+row removes that derivation; it does not establish a complete soundness theorem
+for native indexes, polymorphic maps, or the entire translated Dafny theory.
+See https://github.com/erniecohen/dafny/issues/284.
+
+The hidden `/legacyNoncanonicalMapPayloads:1` option restores the original row
+for comparison and migration only. It is off by default. The regression
+`Test/test21/issue-284-canonical-payloads.bpl` retains native, non-native and
+polymorphic store laws and a failing false assertion. The supplied research
+witnesses and SMT obligations are retained under `Test/test21/issue-284-evidence/`.
