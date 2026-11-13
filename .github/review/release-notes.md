@@ -67,3 +67,8 @@ The new opt-in `/cacheUsedTypes` collects the basic types of a split's type enco
 of each declaration's types, instead of visiting the whole program for every split, and the new
 opt-in `/lockFreeExpansion` expands `{:inline}` functions without a lock that made provers wait
 for each other.  Neither changes what the solver gets.  See `REVIEW.md`.
+
+- Under `/typeEncoding:a`, restrict same-index read-over-write for native-result
+  maps to canonical stored payloads. This removes the known contradiction with
+  decoded Boolean-map extensionality. The hidden `/legacyNoncanonicalMapPayloads:1`
+  option restores the inconsistent row for comparison only.

@@ -1,0 +1,47 @@
+name: Canonical map payload probe
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 45a8869bb43456f126577f5ba6fd24725ed6e4d9
+          path: baseline
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build both drivers
+        run: |
+          dotnet build Source/BoogieDriver -c Release -warnaserror
+          dotnet build baseline/Source/BoogieDriver -c Release -warnaserror
+      - name: Pin solver
+        run: |
+          curl -fsSLo z3.zip https://github.com/Z3Prover/z3/releases/download/z3-5.1.0/z3-5.1.0-x64-glibc-2.39.zip
+          echo 'f47be8d27d3230e823bf1eeede2fe0abaca55bb78d0b59974370e6689a92284a  z3.zip' | sha256sum -c -
+          unzip -q z3.zip
+      - name: Record witnesses and legacy byte identity
+        run: |
+          set +e
+          python3 .github/review/map-payloads-probe.py baseline/Source/BoogieDriver/bin/Release/net8.0/BoogieDriver.dll \
+            Source/BoogieDriver/bin/Release/net8.0/BoogieDriver.dll z3-5.1.0-x64-glibc-2.39/bin/z3 results
+          result=$?
+          mkdir -p results
+          echo "$result" > results/probe-exit.txt
+          if test -f results/report.json; then cat results/report.json >> "$GITHUB_STEP_SUMMARY"; fi
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: canonical-map-probe
+          path: results
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-driver
+          path: Source/BoogieDriver/bin/Release/net8.0
