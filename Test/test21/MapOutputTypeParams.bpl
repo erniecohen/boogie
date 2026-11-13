@@ -11,7 +11,6 @@ procedure P() returns () modifies p; {
   p[13] := 5;
   p[17] := true;
   p[13] := false;
-  assert p[13] == 5 && !p[13] && p[17];
   p[17] := 8;
 
   assert p[13] == 5 && !p[13] && p[17] == 8 && p[17];

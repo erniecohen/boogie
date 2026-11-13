@@ -365,7 +365,8 @@ namespace Microsoft.Boogie.TypeErasure
         // terms and existing casts, never an uninterpreted canonicality predicate.
         var mapping = new Dictionary<TypeVariable, VCExpr>();
         int typeIndex = 0;
-        foreach (var variable in abstractedType.FreeVariables.Concat(abstractedType.TypeParameters))
+        // Match TypesPairForSelectStore: bound arguments precede abstraction arguments.
+        foreach (var variable in abstractedType.TypeParameters.Concat(abstractedType.FreeVariables))
         {
           mapping.Add(variable, types[typeIndex++]);
         }
