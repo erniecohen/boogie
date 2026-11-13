@@ -240,6 +240,8 @@ namespace Microsoft.Boogie
 
     public bool DeterministicLiteralHashes { get; set; }
 
+    public bool LegacyNoncanonicalMapPayloads { get; set; }
+
     public bool StructuralLiterals { get; set; }
 
     public bool VerifyAsTasks { get; set; }
@@ -1338,6 +1340,10 @@ namespace Microsoft.Boogie
           ps.GetIntArgument(x => normalizeNames = x);
           return true;
         
+        case "legacyNoncanonicalMapPayloads":
+          ps.GetIntArgument(x => LegacyNoncanonicalMapPayloads = x == 1, 2);
+          return true;
+
         case "deterministicLiteralHashes":
           ps.GetIntArgument(x => DeterministicLiteralHashes = x == 1, 2);
           return true;

@@ -1,0 +1,1 @@
+Research witnesses from https://github.com/erniecohen/dafny/issues/284, packet SHA-256 af7b45caa32535c876640f94da6e30fc812d6ebcced4a033aa84e70fd80e623d. These are semantic consistency probes, not claims of observed false acceptance. The comparison probe retains all output, including unknown outcomes.

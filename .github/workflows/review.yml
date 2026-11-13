@@ -31,6 +31,10 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
 
 jobs:
+  canonical-map-probe:
+    if: ${{ github.head_ref == 'codex/284-canonical-map-payloads' || github.ref == 'refs/heads/codex/284-canonical-map-payloads' }}
+    uses: ./.github/workflows/map-payloads-probe.yml
+
   version:
     name: Version
     runs-on: ubuntu-22.04
