@@ -390,3 +390,28 @@ for comparison and migration only. It is off by default. The regression
 `Test/test21/issue-284-canonical-payloads.bpl` retains native, non-native and
 polymorphic store laws and a failing false assertion. The supplied research
 witnesses and SMT obligations are retained under `Test/test21/issue-284-evidence/`.
+
+## Reserving fake-solver responses before waiting
+
+`UnsatSolver`, used to control check-sat replies in unit tests, formerly inspected
+the next response, waited on its semaphore, and only then removed that response
+from the queue. Cancelling a check-sat wrapper leaves the underlying read alive.
+When the next run starts, both reads can inspect the same queue head. If the old
+reader's continuation is delayed, the new reader can consume the first unsat and
+start its resource request while the second unsat is still queued. The resource
+request then waits for a third check-sat permit, although its own response is
+already queued. The two permits released by the cancellation test cannot finish
+that read.
+
+The fake solver now removes and reserves each response before waiting on the
+semaphore, and waits only when its reserved response is unsat. This changes no
+real solver transport, idle-handshake policy, verification condition or axiom.
+It is a candidate explanation for the intermittent test hang discussed at
+https://github.com/erniecohen/boogie/pull/8#issuecomment-6847527024; the original
+CI dump was not retained, so that attribution remains unconfirmed.
+
+`UnsatSolverTest.CancelledReaderDoesNotGateTheNextResourceResponse` uses a
+controlled synchronization context to hold the cancelled reader's continuation.
+It starts the next check-sat read, releases exactly two permits, and requires the
+following resource response to complete without another permit. The test fails
+on the old implementation at that assertion, and has bounded waits and cleanup.

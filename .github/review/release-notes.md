@@ -72,3 +72,10 @@ for each other.  Neither changes what the solver gets.  See `REVIEW.md`.
   maps to canonical stored payloads. This removes the known contradiction with
   decoded Boolean-map extensionality. The hidden `/legacyNoncanonicalMapPayloads:1`
   option restores the inconsistent row for comparison only.
+
+`UnsatSolver`, the controllable fake solver used by unit tests, now reserves each
+response before waiting for its check-sat permit. A cancelled read could otherwise
+overlap the next read and make a later resource response wait for an extra permit
+indefinitely. The regression controls the old reader's continuation and requires
+both check-sat replies and the resource reply to complete with exactly two permits.
+See https://github.com/erniecohen/boogie/pull/8#issuecomment-6847527024.
