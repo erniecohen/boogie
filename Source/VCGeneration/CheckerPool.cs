@@ -241,17 +241,19 @@ namespace VC
       // availableCheckers before gate, as in AddChecker: the scheduling by implementation takes and
       // puts back available checkers under gate.
       lock(availableCheckers)
-      lock(gate)
       {
-        disposed = true;
-        if (Options.Trace && Options.CacheBackground)
+        lock (gate)
         {
-          Options.OutputWriter.WriteLine("Background cache, process totals: {0} contexts restarted, {1} set up",
-            Checker.ContextRestarts, Checker.ContextSetups);
-        }
-        checkersSemaphore.Dispose();
-        while (availableCheckers.TryPop(out var checker)) {
-          checker.Close();
+          disposed = true;
+          if (Options.Trace && Options.CacheBackground)
+          {
+            Options.OutputWriter.WriteLine("Background cache, process totals: {0} contexts restarted, {1} set up",
+              Checker.ContextRestarts, Checker.ContextSetups);
+          }
+          checkersSemaphore.Dispose();
+          while (availableCheckers.TryPop(out var checker)) {
+            checker.Close();
+          }
         }
       }
     }
