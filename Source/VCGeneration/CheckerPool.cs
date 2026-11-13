@@ -158,6 +158,14 @@ namespace VC
           MarkStopped(implementation);
         }
 
+        if (disposed)
+        {
+          // Closed rather than put back after Dispose has closed the available ones; a waiter then
+          // fails to make a checker.
+          available?.Close();
+          available = null;
+        }
+
         var index = -1;
         if (available?.LastImplementation != null)
         {
