@@ -20,6 +20,7 @@ namespace Microsoft.Boogie
     uint TimeLimitPerAssertionInPercent { get; }
     bool SIBoolControlVC { get; }
     bool RestartProverPerVC { get; }
+    bool LegacySolverIdleTimeout => false;
     bool EmitDebugInformation { get; }
     
     /**

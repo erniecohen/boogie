@@ -83,6 +83,39 @@ and the fix sends the solver the same queries).  The job `packages` builds and p
 the tag names the version and attaches the packages, with their sha256 sums in
 `SHA256SUMS`, to a GitHub release.
 
+## Returning pooled solvers to idle
+
+After a proof, `Checker.GoBackToIdle` waits for the solver's existing ping before
+returning its checker to the pool. Its former 100 ms deadline retired even healthy
+solvers when output draining or scheduling took longer. This changed physical
+solver histories independently of the proof time limit, including `/timeLimit:0`.
+See https://github.com/erniecohen/dafny/issues/287 .
+
+The default now uses `/solverIdleTimeout:<seconds>`, a separate hang safeguard
+(default 300 seconds, accepted range 1..86400). A handshake taking, for example,
+one second keeps its solver. A handshake that never replies is closed at the
+safety bound and its pool slot is released for a replacement. Stdout EOF wakes
+the response parser after buffered output drains; EOF, I/O failure and a disposed
+transport also retire the checker. The safety bound is still a wall-clock limit:
+this removes the short scheduling deadline, and does not promise retention under
+arbitrarily long stalls. No extra request, assertion or solver option is sent.
+Native solver history survives logical reset, so changes to reuse can change
+resource counts of later tasks even when their own command bytes agree.
+
+This determinism fix is on by default. The hidden `/legacySolverIdleTimeout:1`
+restores the original 100 ms wait, timeout-only recovery and EOF handling; it
+ignores `/solverIdleTimeout`. `/legacySolverIdleTimeout:0` selects the new policy.
+The legacy option is for comparison and migration, not ordinary operation.
+
+`IdleHandshakeTest` withholds a fake solver's pong and advances a manual clock:
+the original/legacy policy closes it at exactly 100 ms, while the default keeps
+it after one second and reuses it only after the pong. Failure and hang tests
+check replacement and a usable pool slot. A real child process consumes a ping
+and exits without replying, checking EOF propagation without a loaded machine.
+Successful fake handshakes send identical complete command sequences in both
+modes. `Test/commandline/IdleHandshake.bpl` checks the same 1 verified / 1 error
+result in both modes, including an inhabited failing false assertion.
+
 ## Deterministic numeric declaration hashes
 
 `/deterministicLiteralHashes:1` opts into process-independent hashes for numeric

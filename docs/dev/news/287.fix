@@ -1,0 +1,6 @@
+Pooled solvers now have a separate, configurable idle-handshake safety timeout
+(/solverIdleTimeout, default 300 seconds), replacing the 100 ms scheduling
+deadline. Stdout EOF and transport failures retire dead solvers promptly. The
+hidden /legacySolverIdleTimeout:1 restores the original 100 ms policy for
+comparison and migration. This changes solver reuse, not verification conditions;
+retaining a solver's native history can affect subsequent resource counts.
