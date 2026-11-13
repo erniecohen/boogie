@@ -16,7 +16,7 @@ anchored = output / 'anchored'
 anchored.mkdir(exist_ok=True)
 for source in list(sources):
     target = anchored / (source.stem + '-erased.bpl')
-    target.write_text(source.read_text() + '\n// Prevent the driver's monomorphic fast path without constraining the theory.\nfunction EncodingAnchor<T>(x: T): T;\n')
+    target.write_text(source.read_text() + '\n// Prevent the monomorphic fast path without constraining the theory.\nfunction EncodingAnchor<T>(x: T): T;\n')
     sources.append(target)
 for source in sources:
     identity = []

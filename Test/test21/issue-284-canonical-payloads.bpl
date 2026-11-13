@@ -1,8 +1,8 @@
 // https://github.com/erniecohen/dafny/issues/284
 // RUN: %boogie /typeEncoding:a /proverOpt:O:smt.mbqi=true /proverOpt:O:smt.mbqi.max_iterations=10 /prune:0 /normalizeDeclarationOrder:0 %s > %t
-// RUN: %OutputCheck %s < %t
+// RUN: %OutputCheck --file-to-check "%t" "%s"
 // RUN: %boogie /typeEncoding:a /proverOpt:O:smt.mbqi=true /proverOpt:O:smt.mbqi.max_iterations=10 /legacyNoncanonicalMapPayloads:1 /prune:0 /normalizeDeclarationOrder:0 %s > %t
-// RUN: %OutputCheck %s < %t
+// RUN: %OutputCheck --file-to-check "%t" "%s"
 // CHECK: Boogie program verifier finished with 6 verified, 1 error
 
 type Key;
