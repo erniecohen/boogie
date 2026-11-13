@@ -26,6 +26,7 @@ env:
   SOLUTION: Source/Boogie.sln
   Z3URL: https://github.com/Z3Prover/z3/releases/download/z3-4.11.2/z3-4.11.2-x64-glibc-2.31.zip
   CVC5URL: https://github.com/cvc5/cvc5/releases/download/cvc5-0.0.7/cvc5-Linux
+  DOTNET_PROCESSOR_COUNT: '2'
   DOTNET_NOLOGO: 'true'
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
 
@@ -87,16 +88,16 @@ jobs:
           diff --strip-trailing-cr Source/Core/Parser.cs Source/Core/Parser.cs.old
           diff --strip-trailing-cr Source/Core/Scanner.cs Source/Core/Scanner.cs.old
           # Build Boogie
-          dotnet build -warnaserror -c ${{ matrix.configuration }} ${SOLUTION}
+          nice -n 10 dotnet build -m:2 -warnaserror -c ${{ matrix.configuration }} ${SOLUTION}
           # Create packages
-          dotnet pack --no-build -c ${{ matrix.configuration }} ${SOLUTION}
+          nice -n 10 dotnet pack -m:2 --no-build -c ${{ matrix.configuration }} ${SOLUTION}
           # Run unit tests
-          dotnet test --blame-hang-timeout 300s --no-build -c ${{ matrix.configuration }} ${SOLUTION}
+          nice -n 10 dotnet test -m:2 --blame-hang-timeout 300s --no-build -c ${{ matrix.configuration }} ${SOLUTION}
           # Run lit test suite.  Each Boogie process gets 300 s, lit's own limit per test, in
           # place of lit.site.cfg's 110 s: v3.5.5's civl/large-samples/GC.bpl (2,772 queries,
           # none under the arguments encoding) takes longer than 110 s in batch mode on these
           # runners, where the process limit then aborts it (upstream's master has reworked it).
-          lit --param ${{ matrix.lit_param }} --param boogie_params=-processTimeLimit:300 -v --timeout=300 -D configuration=${{ matrix.configuration }} Test
+          nice -n 10 lit -j 2 --param ${{ matrix.lit_param }} --param boogie_params=-processTimeLimit:300 -v --timeout=300 -D configuration=${{ matrix.configuration }} Test
 
   lean-auto:
     name: LeanAuto CI
@@ -120,7 +121,7 @@ jobs:
       - name: Install tools, build Boogie
         run: |
           dotnet tool restore
-          dotnet build -warnaserror Source/Boogie.sln
+          nice -n 10 dotnet build -m:2 -warnaserror Source/Boogie.sln
       - name: Setup Lean
         uses: Julian/setup-lean@v1
         with:
@@ -146,8 +147,8 @@ jobs:
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          dotnet build -warnaserror -c Release -p:Version="$VERSION" ${SOLUTION}
-          dotnet pack --no-build -c Release -p:Version="$VERSION" -o packages ${SOLUTION}
+          nice -n 10 dotnet build -m:2 -warnaserror -c Release -p:Version="$VERSION" ${SOLUTION}
+          nice -n 10 dotnet pack -m:2 --no-build -c Release -p:Version="$VERSION" -o packages ${SOLUTION}
       - name: Check the packages and sum them
         env:
           VERSION: ${{ needs.version.outputs.version }}
@@ -171,6 +172,34 @@ jobs:
             packages/SHA256SUMS
           if-no-files-found: error
           retention-days: 90
+
+  idle-handshake:
+    name: Idle handshake (Z3 5.1.0)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Fetch checksum-pinned Z3 5.1.0
+        run: |
+          curl -fsSL https://github.com/Z3Prover/z3/releases/download/z3-5.1.0/z3-5.1.0-x64-glibc-2.39.zip -o "$RUNNER_TEMP/z3.zip"
+          echo "f47be8d27d3230e823bf1eeede2fe0abaca55bb78d0b59974370e6689a92284a  $RUNNER_TEMP/z3.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/z3.zip" -d "$RUNNER_TEMP/z3"
+      - name: Build and run controlled handshake tests
+        run: |
+          nice -n 10 dotnet build -m:2 -warnaserror -c Release Source/BoogieDriver/BoogieDriver.csproj
+          nice -n 10 dotnet test -m:2 -warnaserror -c Release Source/UnitTests/ExecutionEngineTests/ExecutionEngineTests.csproj --filter FullyQualifiedName~IdleHandshakeTest --logger 'trx;LogFileName=idle-handshake.trx' --results-directory idle-handshake
+      - name: Compare verdicts, RU and command bytes
+        run: |
+          nice -n 10 python3 .github/review/idle-handshake.py Source/BoogieDriver/bin/Release/net8.0/BoogieDriver.dll "$RUNNER_TEMP/z3/z3-5.1.0-x64-glibc-2.39/bin/z3" idle-handshake/comparison
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: idle-handshake
+          path: idle-handshake/
+          if-no-files-found: error
 
   release:
     name: GitHub release

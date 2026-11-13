@@ -498,6 +498,10 @@ namespace Microsoft.Boogie
     /// A hidden option that configures a time limit for the whole Boogie CLI invocation
     /// </summary>
     public uint ProcessTimeLimit { get; set; } = 0;
+
+    public uint SolverIdleTimeout { get; set; } = 300;
+
+    public bool LegacySolverIdleTimeout { get; set; }
     public uint TimeLimit { get; set; } = 0; // 0 means no limit
     public uint ResourceLimit { get; set; } = 0; // default to 0
     public uint SmokeTimeout { get; set; } = 10; // default to 10s
@@ -1276,6 +1280,14 @@ namespace Microsoft.Boogie
             VcsCores = p < 1 ? 1 : p;
           }
 
+          return true;
+
+        case "legacySolverIdleTimeout":
+          ps.GetIntArgument(x => LegacySolverIdleTimeout = x == 1, 2);
+          return true;
+
+        case "solverIdleTimeout":
+          ps.GetUnsignedNumericArgument(x => SolverIdleTimeout = x, a => 0 < a && a <= 86400);
           return true;
 
         case "timeLimit":
@@ -2171,6 +2183,10 @@ namespace Microsoft.Boogie
   /timeLimit:<num>
                 Limit the number of seconds spent trying to verify
                 each procedure
+  /solverIdleTimeout:<num>
+                Safety timeout in seconds for returning a solver to the pool
+                (default 300, range 1..86400). Independent of /timeLimit.
+                A nonresponsive solver is closed and replaced.
   /rlimit:<num>
                 Limit the Z3 resource spent trying to verify each procedure.
   /errorTrace:<n>
