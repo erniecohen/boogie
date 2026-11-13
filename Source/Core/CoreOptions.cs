@@ -92,6 +92,8 @@ namespace Microsoft.Boogie
     bool LegacyNoncanonicalMapPayloads => false;
     bool CacheUsedTypes => false;
     bool LockFreeExpansion => false;
+    bool CacheBackground => false;
+    bool ScheduleByImplementation => false;
     XmlSink XmlSink { get; }
     uint VcsFinalAssertTimeout { get; }
     uint VcsKeepGoingTimeout { get; }

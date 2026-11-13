@@ -478,3 +478,90 @@ fix. `Test/pruning/RevealMonomorphic.bpl` hides a function with a split axiom an
 polymorphic function, and runs under `:m` and `:a` with one expected output: the hidden
 assertions fail, and the revealed ones and a control without `hide` verify. Without the
 fix, `:m` verifies all six.
+
+## Restarting a context instead of setting it up again: `/cacheBackground`
+
+Under pruning, `Checker.Target` sets a prover up for every split.  It does a `FullReset`, then
+translates the split's pruned declarations into the prover's context.  The split's first check
+then erases and prints them as the background, every declaration and axiom sent before its query.
+On Dafny's standard library, 7,611 checks had 1,916 distinct backgrounds: the splits of an
+implementation mostly share their pruned declarations.  The background was 86% of the bytes sent.
+
+Under the opt-in `/cacheBackground`, a checker keeps the key of the context its prover holds:
+
+- the program and the prover's context;
+- the random seed;
+- the basic types of the type encoding;
+- the declarations in the order they are declared, which pruning, hide and reveal decide;
+- the implementation's own SMT options, which the background sends.
+
+When a split's key is the one held, the checker does not set the context up again.  The prover
+restarts it instead (`TryRestartContext`): it sends the commands of a `FullReset`, then replays
+exactly what the context's first check sent from there on: the commands before the check's `Reset`
+and the background.  It sends and logs them as before, so the solver and the log get the same
+bytes.
+
+The state the context's checks start from comes back to what it was after the background:
+
+- The namer: each check already uses a copy of the context's namer (`ResetNamer`).
+- The type axiom builder: each check already uses a clone of `CachedAxBuilder`.
+- The declarations collector: `MarkBaseline` and `RestoreBaseline` forget what is known or pending
+  since the background, where a check's own `Push` and `Pop` leave what its counterexamples add.
+- The named assumes of `/trackVerificationCoverage`, which decide whether an unsat core is asked
+  for: they are reset to the background's.
+
+A prover that has not finished a check of its context, or had errors, sets it up again, and so
+does the batch mode prover, which does not restart contexts.
+
+`/cacheBackground` does not change which checker verifies a split, or when: the pool hands out
+the last checker made available, as without it.  Each solver therefore gets the same commands in the
+same order as without the option, so its whole history, including the native state it keeps across
+`(reset)` (see "Returning pooled solvers to idle"), is the same, and so are its resource counts.  A
+context is restarted only when a checker's next split happens to have the key it holds: with one
+core and the command line, which verifies an implementation's splits one after the other, that is
+most splits.
+
+The separate opt-in `/scheduleByImplementation` makes it so more often.  Under it, a checker that
+comes back goes to a waiting split of the implementation it last verified, if there is one.  Else
+it goes to the first waiting split whose implementation no checker is verifying.  An
+implementation's splits then tend to run one after the other on one prover, and its context can be
+restarted.  On `Test/dafny/Seq.bpl` split on every assertion (612 splits) through the tasks with 4
+cores, 359 contexts are restarted with both options and 179 with `/cacheBackground` alone; one
+prover restarts 364.  Each check's commands are still the same, but which solver process gets them,
+and after which others, is not, so resource counts can differ from a run without the option, as
+they can between runs with several cores.
+
+The unit tests `BackgroundCacheTest` compare every log of a program, without and with the option,
+through the tasks and through the command line.  The program has implementations with several
+splits of the same declarations, two with the same declarations and different SMT options, hide and
+reveal, a seed of its own and a failing assertion.  The configurations are:
+
+- both encodings;
+- with declaration normalization, without it and with a seed;
+- with `/trackVerificationCoverage` and with 4 cores;
+- with pruning off;
+- with 4 cores and `/scheduleByImplementation`.
+
+The tests check that contexts were restarted, and they fail if the key leaves out the SMT options.
+`OnlyTheSchedulingOptionChangesTheOrderOfChecks` starts the tasks interleaved, the first split of
+each implementation, then the second of each, and so on, on one prover.  The prover's whole log is
+the same without `/cacheBackground` and with it; with `/scheduleByImplementation` too, each
+implementation's checks run one after the other.  The test fails if `/cacheBackground` alone
+schedules by implementation.
+
+`CacheBackgroundAloneKeepsTheResourceCountOfEveryCheck` runs the program with the solver on the
+path, with 1 core and with 3.  A gate in front of each solver process holds every check until all
+checks that can run have reached their gates, and then lets one go, so that the same checks run on
+the same processes in the same order in every run; the test checks that two runs without the option
+agree.  The resource count of every check is then the same without the option and with
+`/cacheBackground` alone.  The test fails if `/cacheBackground` alone schedules by implementation.
+
+`ACheckerThatCannotBeMadeIsNotCountedAsRunning`: under `/scheduleByImplementation`, a split whose
+checker cannot be made, here because the solver cannot be created, no longer stays counted as
+running its implementation.  The restart and setup counts, and the `/trace` line that reports them,
+are each pool's own.
+
+The key compares declarations by reference, as `/lockFreeExpansion` reads them: a front end must
+not change a function, axiom or constant in place once verification has started.
+`Test/commandline/BackgroundCache.bpl` compares the whole command stream with `cmp`, with the noop
+solver and with Z3, whose unsat cores `/trackVerificationCoverage` asks for.

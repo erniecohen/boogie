@@ -103,3 +103,11 @@ It also keeps the `hideable` flag on the axioms it splits and instantiates, so t
 under `:m` as it does under `:a`, and a `reveal` of a polymorphic function covers its instances.
 The arguments and predicates encodings are unchanged.  See `REVIEW.md` and
 https://github.com/erniecohen/dafny/issues/281.
+
+The new opt-in `/cacheBackground` restarts a prover's context for a split whose pruned declarations,
+seed, type encoding types and SMT options are those of the context it holds, instead of
+translating, erasing and printing them again.  Each solver gets the same commands, byte for byte,
+in the same order, so resource counts are unchanged.  The separate opt-in
+`/scheduleByImplementation` lets an implementation's splits run one after the other on one prover,
+so that more contexts are restarted; it changes which solver process verifies which split, so
+resource counts can differ from a run without it.  See `REVIEW.md`.

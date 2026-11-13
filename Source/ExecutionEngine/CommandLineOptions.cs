@@ -247,6 +247,8 @@ namespace Microsoft.Boogie
     public bool VerifyAsTasks { get; set; }
     public bool CacheUsedTypes { get; set; }
     public bool LockFreeExpansion { get; set; }
+    public bool CacheBackground { get; set; }
+    public bool ScheduleByImplementation { get; set; }
 
     public bool ImmediatelyAcceptCommands => StratifiedInlining > 0 || ContractInfer;
 
@@ -1374,6 +1376,8 @@ namespace Microsoft.Boogie
               ps.CheckBooleanFlag("verifyAsTasks", x => VerifyAsTasks = x) ||
               ps.CheckBooleanFlag("cacheUsedTypes", x => CacheUsedTypes = x) ||
               ps.CheckBooleanFlag("lockFreeExpansion", x => LockFreeExpansion = x) ||
+              ps.CheckBooleanFlag("cacheBackground", x => CacheBackground = x) ||
+              ps.CheckBooleanFlag("scheduleByImplementation", x => ScheduleByImplementation = x) ||
               ps.CheckBooleanFlag("wait", x => Wait = x) ||
               ps.CheckBooleanFlag("trace", x => Verbosity = CoreOptions.VerbosityLevel.Trace) ||
               ps.CheckBooleanFlag("quiet", x => Verbosity = CoreOptions.VerbosityLevel.Quiet) ||
@@ -1991,6 +1995,24 @@ namespace Microsoft.Boogie
                 visited each time.  The solver gets the same queries.  A front end
                 that changes a declaration other than an implementation in place
                 after verification has started must not use it.
+  /cacheBackground
+                when a prover is set up for a split with the same declarations,
+                in the same order, the same seed, type encoding types and SMT
+                options as the context it holds, restart that context instead of
+                setting it up again: send the commands that set it up, and its
+                background, as they were sent the first time, without translating,
+                erasing and printing the declarations again.  Each solver gets the
+                same commands, in the same order, as without the option.  The
+                declarations are compared by reference: a front end must not change
+                a function, axiom or constant in place once verification has started.
+  /scheduleByImplementation
+                give a prover that comes back to a waiting split of the
+                implementation it last verified, and else to the first split whose
+                implementation no prover is verifying, so that with /cacheBackground
+                more contexts are restarted.  This changes which solver process
+                verifies which split, and in what order; a solver keeps native state
+                across (reset), so resource counts can differ from a run without it,
+                although each check's commands are the same.
   /lockFreeExpansion
                 translate the body of an {:inline} function at each call without
                 holding a lock on the function.  The translation reads the body and

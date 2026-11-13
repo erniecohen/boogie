@@ -99,6 +99,7 @@ namespace Microsoft.Boogie.SMTLib
       _KnownSelectFunctions.Clear();
       AllDecls.Clear();
       IncDecls.Clear();
+      baselineDepth = -1;
       InitializeKnownDecls();
     }
 
@@ -110,6 +111,37 @@ namespace Microsoft.Boogie.SMTLib
       _KnownTypes.Push(new HashSet<Type>(_KnownTypes.Peek()));
       _KnownStoreFunctions.Push(new HashSet<string>(_KnownStoreFunctions.Peek()));
       _KnownSelectFunctions.Push(new HashSet<string>(_KnownSelectFunctions.Peek()));
+    }
+
+    private int baselineDepth = -1;
+    private int baselineDecls;
+
+    /// <summary>
+    /// Marks what is known now as the baseline that <see cref="RestoreBaseline"/> returns to: what a
+    /// context's background has declared.  It opens a scope for what comes after.
+    /// </summary>
+    public void MarkBaseline()
+    {
+      baselineDepth = _KnownFunctions.Count;
+      baselineDecls = AllDecls.Count;
+      Push();
+    }
+
+    /// <summary>
+    /// Forgets everything known or pending since <see cref="MarkBaseline"/>.  False when no baseline
+    /// is marked or the scopes since have not been closed.
+    /// </summary>
+    public bool RestoreBaseline()
+    {
+      if (baselineDepth < 0 || _KnownFunctions.Count != baselineDepth + 1)
+      {
+        return false;
+      }
+      Pop();
+      Push();
+      IncDecls.Clear();
+      AllDecls.RemoveRange(baselineDecls, AllDecls.Count - baselineDecls);
+      return true;
     }
 
     public void Pop()

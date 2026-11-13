@@ -184,6 +184,14 @@ public abstract class ProverInterface
   public abstract void FullReset(VCExpressionGenerator gen);
 
   /// <summary>
+  /// Under /cacheBackground: start the context the prover was last set up for again, instead of a
+  /// FullReset and a new setup of the same declarations.  Returns false, changing nothing, when the
+  /// prover cannot, and the caller then sets the context up as usual.  When it returns true, the
+  /// solver gets exactly the commands a FullReset and a new setup would have sent.
+  /// </summary>
+  public virtual bool TryRestartContext(VCExpressionGenerator gen) => false;
+
+  /// <summary>
   /// MSchaef: Allows to Push a VCExpression as Axiom on the prover stack (beta)
   /// for now it is only implemented by ProcessTheoremProver and still requires some
   /// testing
