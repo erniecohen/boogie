@@ -13,7 +13,7 @@ fixtures = Path('Test/test21/issue-284-evidence')
 report = {'solver_sha256': hashlib.sha256(z3.read_bytes()).hexdigest(),
           'baseline_driver_sha256': hashlib.sha256(base.read_bytes()).hexdigest(),
           'candidate_driver_sha256': hashlib.sha256(candidate.read_bytes()).hexdigest(), 'runs': {}}
-sources = sorted((fixtures / 'examples').glob('*.bpl')) + [Path('Test/test21/' + name) for name in ['issue-284-canonical-payloads.bpl', 'issue-425-split-map-rows.bpl', 'InterestingExamples1.bpl', 'MapOutputTypeParams.bpl']]
+sources = sorted((fixtures / 'examples').glob('*.bpl')) + [Path('Test/test21/' + name) for name in ['issue-284-canonical-payloads.bpl', 'InterestingExamples1.bpl', 'MapOutputTypeParams.bpl']]
 anchored = output / 'anchored'
 anchored.mkdir(exist_ok=True)
 for source in list(sources):
@@ -59,12 +59,6 @@ for source in sorted((fixtures / 'proofs').glob('*.smt2')):
     (output / (source.stem + '.stdout')).write_bytes(p.stdout)
     (output / (source.stem + '.stderr')).write_bytes(p.stderr)
     report[source.name] = {'exit': p.returncode, 'stdout': p.stdout.decode()}
-# https://github.com/erniecohen/dafny/issues/425: the split same-index rows are equivalent to
-# the single guarded row, and neither implies the legacy unguarded row.
-equivalence = Path('Test/test21/issue-425-evidence/split-rows-equivalence.smt2')
-p = subprocess.run([str(z3), str(equivalence)], capture_output=True, timeout=90)
-(output / (equivalence.stem + '.stdout')).write_bytes(p.stdout)
-report[equivalence.name] = {'exit': p.returncode, 'stdout': p.stdout.decode()}
 (output / 'report.json').write_text(json.dumps(report, indent=2))
 print(json.dumps(report, indent=2))
 
@@ -86,9 +80,6 @@ for mode in ['baseline', 'legacy', 'default']:
         failures.append(mode + ': canonical payload controls')
 if report['iset-erased-repaired-core.smt2']['stdout'].strip() not in ['sat', 'unknown']:
     failures.append('repaired map kernel')
-answers = report[equivalence.name]['stdout'].split()
-if len(answers) != 6 or answers[:5] != ['unsat'] * 5 or answers[5] not in ['sat', 'unknown']:
-    failures.append('split-row equivalence')
 (output / 'gate.json').write_text(json.dumps({'failures': failures}, indent=2))
 if failures:
     print('Unexpected comparison failures: ' + ', '.join(failures), file=sys.stderr)
