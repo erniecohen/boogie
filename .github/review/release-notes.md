@@ -72,6 +72,10 @@ for each other.  Neither changes what the solver gets.  See `REVIEW.md`.
   maps to canonical stored payloads. This removes the known contradiction with
   decoded Boolean-map extensionality. The hidden `/legacyNoncanonicalMapPayloads:1`
   option restores the inconsistent row for comparison only.
+- Under `/typeEncoding:a`, emit that guarded row, for a map whose result type is a
+  type parameter, as one row per native sort and one row for the other result
+  types. The rows are equivalent to the single row, and cost less to instantiate
+  ([erniecohen/dafny#425](https://github.com/erniecohen/dafny/issues/425)).
 
 After a proof, a pooled solver's checker no longer goes back to idle under a 100 ms deadline.
 A healthy solver whose idle handshake took longer was retired, so which physical solver ran
