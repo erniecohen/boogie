@@ -271,10 +271,6 @@ namespace Microsoft.Boogie.TypeErasure
     // The normal axioms of the theory of arrays (right now without extensionality)
 
     private VCExpr Select(Function select, List<VCExprVar> types, VCExpr map,
-      List<VCExprVar> indexes) =>
-      Select(select, types.Cast<VCExpr>().ToList(), map, indexes);
-
-    private VCExpr Select(Function select, List<VCExpr> types, VCExpr map,
       List<VCExprVar> indexes)
     {
       Contract.Requires(map != null);
@@ -284,17 +280,13 @@ namespace Microsoft.Boogie.TypeErasure
       Contract.Ensures(Contract.Result<VCExpr>() != null);
       List<VCExpr>
         selectArgs = new List<VCExpr>();
-      selectArgs.AddRange(types);
+      selectArgs.AddRange(HelperFuns.ToVCExprList(types));
       selectArgs.Add(map);
       selectArgs.AddRange(HelperFuns.ToVCExprList(indexes));
       return Gen.Function(select, selectArgs);
     }
 
     private VCExpr Store(Function store, List<VCExprVar> types, VCExpr map,
-      List<VCExprVar> indexes, VCExpr val) =>
-      Store(store, types.Cast<VCExpr>().ToList(), map, indexes, val);
-
-    private VCExpr Store(Function store, List<VCExpr> types, VCExpr map,
       List<VCExprVar> indexes, VCExpr val)
     {
       Contract.Requires(val != null);
@@ -305,7 +297,7 @@ namespace Microsoft.Boogie.TypeErasure
       Contract.Ensures(Contract.Result<VCExpr>() != null);
       List<VCExpr>
         storeArgs = new List<VCExpr>();
-      storeArgs.AddRange(types);
+      storeArgs.AddRange(HelperFuns.ToVCExprList(types));
       storeArgs.Add(map);
       storeArgs.AddRange(HelperFuns.ToVCExprList(indexes));
       storeArgs.Add(val);
@@ -364,62 +356,33 @@ namespace Microsoft.Boogie.TypeErasure
       VCExpr
         eq = Gen.Eq(selectExpr, val);
       Contract.Assert(eq != null);
-      if (options.LegacyNoncanonicalMapPayloads)
+      if (!options.LegacyNoncanonicalMapPayloads &&
+          (abstractedType.Result.IsVariable || AxBuilder.UnchangedType(abstractedType.Result)))
       {
-        return Gen.Forall(quantifiedVars, new List<VCTrigger>(), "mapAx0:" + select.Name, 0, eq);
+        // The result type may be a skeleton parameter instantiated by a native
+        // sort. Only its canonical payloads have the raw read-over-write law.
+        // Non-native results impose no extra premise. Use the actual type-code
+        // terms and existing casts, never an uninterpreted canonicality predicate.
+        var mapping = new Dictionary<TypeVariable, VCExpr>();
+        int typeIndex = 0;
+        // Match TypesPairForSelectStore: bound arguments precede abstraction arguments.
+        foreach (var variable in abstractedType.TypeParameters.Concat(abstractedType.FreeVariables))
+        {
+          mapping.Add(variable, types[typeIndex++]);
+        }
+        var resultType = AxBuilder.Type2Term(abstractedType.Result, mapping);
+        VCExpr canonical = VCExpressionGenerator.True;
+        foreach (var nativeType in AxBuilderArguments.NativeTypes)
+        {
+          var nativeCode = AxBuilder.Type2Term(nativeType, mapping);
+          var decoded = AxBuilderArguments.Cast(val, nativeType);
+          var encoded = AxBuilderArguments.Cast(decoded, AxBuilder.U);
+          canonical = Gen.AndSimp(canonical,
+            Gen.Implies(Gen.Eq(resultType, nativeCode), Gen.Eq(encoded, val)));
+        }
+        eq = Gen.ImpliesSimp(canonical, eq);
       }
-      if (AxBuilder.UnchangedType(abstractedType.Result))
-      {
-        // A statically native result: only that sort's canonical payloads have the raw law.
-        return Gen.Forall(quantifiedVars, new List<VCTrigger>(), "mapAx0:" + select.Name, 0,
-          Gen.ImpliesSimp(Canonical(val, abstractedType.Result), eq));
-      }
-      if (!abstractedType.Result.IsVariable)
-      {
-        return Gen.Forall(quantifiedVars, new List<VCTrigger>(), "mapAx0:" + select.Name, 0, eq);
-      }
-
-      // The result type is a skeleton parameter, which a native sort may instantiate. Only that
-      // sort's canonical payloads have the raw read-over-write law; non-native results impose no
-      // premise. State this as one row per native sort, with the parameter's type code in the
-      // select and store terms, and one row for the other result types. These rows are together
-      // equivalent to the single row guarded by "resultType == N ==> canonical_N(val)" for every
-      // native N (the native type codes are distinct), but a row's cast terms now reach the solver
-      // only when a store's result type is that native sort, and no instance must case-split over
-      // every native sort. Use the actual type-code terms and existing casts, never an
-      // uninterpreted canonicality predicate.
-      // Match TypesPairForSelectStore: bound arguments precede abstraction arguments.
-      var typeVariables = abstractedType.TypeParameters.Concat(abstractedType.FreeVariables).ToList();
-      int resultIndex = typeVariables.IndexOf(abstractedType.Result.AsVariable);
-      Contract.Assert(0 <= resultIndex && resultIndex < types.Count);
-      var resultType = types[resultIndex];
-
-      var rows = new List<VCExpr>();
-      VCExpr nonNative = VCExpressionGenerator.True;
-      foreach (var nativeType in AxBuilderArguments.NativeTypes)
-      {
-        var nativeCode = AxBuilder.Type2Term(nativeType, new Dictionary<TypeVariable, VCExpr>());
-        nonNative = Gen.AndSimp(nonNative, Gen.Neq(resultType, nativeCode));
-
-        var nativeTypes = types.Select(t => (VCExpr)t).ToList();
-        nativeTypes[resultIndex] = nativeCode;
-        var nativeVars = new List<VCExprVar>(quantifiedVars);
-        nativeVars.Remove(resultType);
-        var nativeStore = Store(store, nativeTypes, m, indexes, val);
-        var nativeSelect = Select(select, nativeTypes, nativeStore, indexes);
-        rows.Add(Gen.Forall(nativeVars, new List<VCTrigger>(), "mapAx0:" + select.Name, 0,
-          Gen.ImpliesSimp(Canonical(val, nativeType), Gen.Eq(nativeSelect, val))));
-      }
-      rows.Add(Gen.Forall(quantifiedVars, new List<VCTrigger>(), "mapAx0:" + select.Name, 0,
-        Gen.ImpliesSimp(nonNative, eq)));
-      return Gen.NAry(VCExpressionGenerator.AndOp, rows);
-    }
-
-    // The payload is the encoding of its own decoding at the native sort.
-    private VCExpr Canonical(VCExpr val, Type nativeType)
-    {
-      var decoded = AxBuilderArguments.Cast(val, nativeType);
-      return Gen.Eq(AxBuilderArguments.Cast(decoded, AxBuilder.U), val);
+      return Gen.Forall(quantifiedVars, new List<VCTrigger>(), "mapAx0:" + select.Name, 0, eq);
     }
 
     private VCExpr GenMapAxiom1(Function select, Function store,

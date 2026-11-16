@@ -32,7 +32,7 @@ env:
 
 jobs:
   canonical-map-probe:
-    if: ${{ github.head_ref == 'codex/284-canonical-map-payloads' || github.ref == 'refs/heads/codex/284-canonical-map-payloads' || github.head_ref == 'claude/425-split-map-rows' || github.ref == 'refs/heads/claude/425-split-map-rows' }}
+    if: ${{ github.head_ref == 'codex/284-canonical-map-payloads' || github.ref == 'refs/heads/codex/284-canonical-map-payloads' }}
     uses: ./.github/workflows/map-payloads-probe.yml
 
   version:

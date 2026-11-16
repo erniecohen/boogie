@@ -390,27 +390,6 @@ for comparison and migration only. It is off by default. The regression
 polymorphic store laws and a failing false assertion. The supplied research
 witnesses and SMT obligations are retained under `Test/test21/issue-284-evidence/`.
 
-### One row per native result sort
-
-When the result type is a skeleton parameter `r`, the guarded row is emitted as
-one row for each used native sort B, with B's type code in place of `r` and the
-premise `B2U(U2B(value)) == value`, and one row whose premise is that `r` is none
-of the native type codes. A statically native result keeps a single row with its
-own premise; a non-native, non-parameter result keeps the unguarded row. Since the
-native type codes have distinct constructor numbers, these rows are equivalent to
-the single row: `Test/test21/issue-425-evidence/split-rows-equivalence.smt2`
-checks both directions, and that neither form implies the legacy row.
-
-The single row put every native sort's casts and a type-code case split into
-every instance, including the many whose result is not native. After the split,
-a row's casts reach the solver only through stores whose result type code is that
-native sort. On the reproducer of https://github.com/erniecohen/dafny/issues/425,
-over 48 random seeds, the single row used 205.4M resource units in all, with one
-proof out of resource at 64M; the split rows use 106.5M, against 118.7M for the
-legacy row. The legacy option's output is unchanged.
-`Test/test21/issue-425-split-map-rows.bpl` gives the same verdicts before and after
-the split, under both options.
-
 ## Reserving fake-solver responses before waiting
 
 `UnsatSolver`, used to control check-sat replies in unit tests, formerly inspected
