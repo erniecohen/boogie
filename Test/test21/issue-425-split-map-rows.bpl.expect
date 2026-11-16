@@ -1,0 +1,8 @@
+issue-425-split-map-rows.bpl(41,3): Error: this assertion could not be proved
+Execution trace:
+    issue-425-split-map-rows.bpl(41,3): anon0
+issue-425-split-map-rows.bpl(48,3): Error: this assertion could not be proved
+Execution trace:
+    issue-425-split-map-rows.bpl(47,3): anon0
+
+Boogie program verifier finished with 8 verified, 2 errors
