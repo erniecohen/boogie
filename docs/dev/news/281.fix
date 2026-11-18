@@ -1,0 +1,5 @@
+Add the opt-in /monomorphicSharedLiterals:1 policy. It preserves the existing
+shared true and false expression objects during monomorphization, allowing
+passification to recognize equal Boolean incarnations at control-flow joins.
+The policy adds no axiom, assumption or asserted fact. Its default is 0, and it
+has no effect with the arguments or predicates type encoding.

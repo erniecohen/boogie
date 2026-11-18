@@ -603,3 +603,20 @@ its default and range. Removing preservation, bypassing the option guard, or
 reversing its parser each fails tests. The existing monomorphization controls
 exercise successful polymorphic assertions and failing false assertions under
 all three encodings with the option enabled.
+
+The CLI controls in `Test/test21/shared-boolean-literals.bpl` check successful
+polymorphic facts and rejection of `assert false` in all six combinations of
+encoding (`m`, `a`, `p`) and policy (0, 1). The object-identity regression uses
+the programmatic interface because textual serialization does not preserve
+shared expression objects.
+
+Dafny dependency adoption must use a released package and update
+`docs/dev/design/241-option-audit.tsv` in the same dependency-update change.
+Its audit enumerates the inherited prover interface; the new row is:
+
+```tsv
+prover	Microsoft.Boogie.CoreOptions.MonomorphicSharedLiterals		System.Boolean	execution	complete inherited prover interface enumerated and encoded before first query
+```
+
+The current pinned Dafny dependency does not have this property, so that row
+belongs with dependency adoption rather than in Dafny's unchanged pinned tree.
