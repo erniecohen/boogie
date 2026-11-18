@@ -1092,7 +1092,8 @@ namespace Microsoft.Boogie
     {
       // Passification recognizes these shared constants by identity at control-flow joins.
       // Their built-in boolean type has no type parameters to instantiate.
-      if (ReferenceEquals(node, Expr.True) || ReferenceEquals(node, Expr.False))
+      if (monomorphizationVisitor.PreserveSharedBooleanConstants &&
+          (ReferenceEquals(node, Expr.True) || ReferenceEquals(node, Expr.False)))
       {
         return node;
       }
@@ -1287,6 +1288,8 @@ namespace Microsoft.Boogie
      */
 
     private CoreOptions Options { get; }
+
+    public bool PreserveSharedBooleanConstants => Options.MonomorphicSharedLiterals;
     
     private Program program;
     private Dictionary<string, Function> nameToFunction;

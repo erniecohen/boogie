@@ -18,11 +18,14 @@ public class MonomorphizationTest
     return program;
   }
 
-  [TestCase(true)]
-  [TestCase(false)]
-  public void MonomorphizationPreservesSharedBooleanConstants(bool value)
+  [TestCase(true, true)]
+  [TestCase(false, true)]
+  [TestCase(true, false)]
+  [TestCase(false, false)]
+  public void MonomorphizationPreservesSharedBooleanConstants(bool value, bool enabled)
   {
-    var options = CommandLineOptions.FromArguments(TextWriter.Null, "/typeEncoding:m");
+    var options = CommandLineOptions.FromArguments(TextWriter.Null, "/typeEncoding:m",
+      "/monomorphicSharedLiterals:" + (enabled ? 1 : 0));
     var program = Parse(@"
 function Id<T>(x: T): T;
 axiom (forall<T> x: T :: {Id(x)} Id(x) == x);
@@ -57,7 +60,27 @@ done:
     Assert.AreEqual(2, assignments.Count);
     foreach (var assignment in assignments)
     {
-      Assert.AreSame(shared, assignment.Rhss[0], "A join must retain the shared literal incarnation");
+      if (enabled)
+      {
+        Assert.AreSame(shared, assignment.Rhss[0], "A join must retain the shared literal incarnation");
+      }
+      else
+      {
+        Assert.AreNotSame(shared, assignment.Rhss[0], "The default retains the original cloning path");
+      }
+    }
+  }
+
+  [Test]
+  public void SharedLiteralsOptionIsOptInAndBoolean()
+  {
+    Assert.False(CommandLineOptions.FromArguments(TextWriter.Null).MonomorphicSharedLiterals);
+    Assert.False(CommandLineOptions.FromArguments(TextWriter.Null, "/monomorphicSharedLiterals:0").MonomorphicSharedLiterals);
+    Assert.True(CommandLineOptions.FromArguments(TextWriter.Null, "/monomorphicSharedLiterals:1").MonomorphicSharedLiterals);
+    foreach (var invalid in new[] { "-1", "2", "true" })
+    {
+      Assert.False(new CommandLineOptions(TextWriter.Null, new ConsolePrinter())
+        .Parse(new[] { "/monomorphicSharedLiterals:" + invalid }));
     }
   }
 
@@ -66,7 +89,8 @@ done:
   [TestCase("p")]
   public async Task TaskApiSpecializesOnlyTheMonomorphicEncoding(string encoding)
   {
-    var options = CommandLineOptions.FromArguments(TextWriter.Null, "/typeEncoding:" + encoding);
+    var options = CommandLineOptions.FromArguments(TextWriter.Null, "/typeEncoding:" + encoding,
+      "/monomorphicSharedLiterals:1");
     options.VcsCores = 1;
     using var engine = ExecutionEngine.CreateWithoutSharedCache(options);
     var program = Parse(@"
@@ -92,7 +116,8 @@ procedure Bad() { assert Id(42) == 42; assert false; }
   [TestCase("a")]
   public async Task TaskApiAcceptsPretypedBitvectorConcatenations(string encoding)
   {
-    var options = CommandLineOptions.FromArguments(TextWriter.Null, "/typeEncoding:" + encoding);
+    var options = CommandLineOptions.FromArguments(TextWriter.Null, "/typeEncoding:" + encoding,
+      "/monomorphicSharedLiterals:1");
     options.VcsCores = 1;
     using var engine = ExecutionEngine.CreateWithoutSharedCache(options);
     var program = Parse(@"
@@ -119,7 +144,8 @@ procedure Bad(x: bv16) { assert Id(0bv8 ++ x) == 0bv8 ++ x; assert false; }
   [TestCase("a")]
   public async Task TaskApiDropsQuantifiersThatBindNothing(string encoding)
   {
-    var options = CommandLineOptions.FromArguments(TextWriter.Null, "/typeEncoding:" + encoding);
+    var options = CommandLineOptions.FromArguments(TextWriter.Null, "/typeEncoding:" + encoding,
+      "/monomorphicSharedLiterals:1");
     options.VcsCores = 1;
     using var engine = ExecutionEngine.CreateWithoutSharedCache(options);
     var program = Parse(@"
@@ -151,7 +177,8 @@ procedure Bad() { assert Id(Zero()) == 0; assert false; }
   public async Task TaskApiPreservesExplicitEncodingForAnAlreadyMonomorphicProgram(
     string encoding, CoreOptions.TypeEncoding expected)
   {
-    var options = CommandLineOptions.FromArguments(TextWriter.Null, "/typeEncoding:" + encoding);
+    var options = CommandLineOptions.FromArguments(TextWriter.Null, "/typeEncoding:" + encoding,
+      "/monomorphicSharedLiterals:1");
     options.VcsCores = 1;
     using var engine = ExecutionEngine.CreateWithoutSharedCache(options);
     Assert.AreEqual(1, (await engine.GetVerificationTasks(Parse("procedure P() { assert true; }"))).Count);

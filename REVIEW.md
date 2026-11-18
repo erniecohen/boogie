@@ -569,10 +569,11 @@ solver and with Z3, whose unsat cores `/trackVerificationCoverage` asks for.
 
 ## Shared Boolean constants in monomorphization
 
-`MonomorphizationDuplicator` preserves the existing shared `Expr.True` and
-`Expr.False` expressions. These constants have the built-in Boolean type, with no
-type parameter to instantiate. Other expressions still follow the ordinary
-cloning and type-instantiation path.
+`/monomorphicSharedLiterals:1` opts into preserving the existing shared
+`Expr.True` and `Expr.False` expressions in `MonomorphizationDuplicator`.
+These constants have the built-in Boolean type, with no type parameter to
+instantiate. Other expressions still follow the ordinary cloning and
+type-instantiation path.
 
 Passification compares incarnations by reference at control-flow joins unless
 `/structuralLiterals` is enabled. Cloning a shared constant independently in each
@@ -582,13 +583,23 @@ trackers and the proof splitting of `BatchArrayWriter.Invoke`; see
 https://github.com/erniecohen/dafny/issues/281 .
 
 This preserves existing sharing rather than canonicalizing arbitrary literals.
-It adds no axiom, assumption or assertion. Both versions express the same Boolean
-values; retaining their sharing lets the existing join simplification apply.
-The change is confined to monomorphization. Dafny opts into `/typeEncoding:m`;
-its default arguments encoding does not call this duplicator. Boogie itself
-defaults to the monomorphic encoding.
+It adds no axiom, assumption or asserted fact. Both versions express the same
+Boolean values; retaining their sharing lets the existing join simplification
+apply. The arguments and predicates encodings do not call this duplicator.
+Dafny defaults to the arguments encoding; standalone Boogie defaults to the
+monomorphic encoding.
+
+The option defaults to 0, retaining the original cloning path. Preserving
+sharing changes proof contexts and names, and proof cost is not monotone in this
+change. The unconditional prototype made `textbook/BQueue.bpl` hit its existing
+limit in the Z3 4.11.2 CI configurations. Existing defaults therefore retain the
+old behavior; clients can evaluate the sharing policy explicitly with
+`/typeEncoding:m /monomorphicSharedLiterals:1`. This is an optimization option,
+not a soundness fix or a new axiom family.
 
 `MonomorphizationPreservesSharedBooleanConstants` checks both shared values on
-two incoming branches. Removing the preservation fails both cases. The existing
-monomorphization tests retain successful polymorphic assertions and failing
-false assertions under all three encodings.
+two incoming branches, with sharing enabled and disabled. The option test checks
+its default and range. Removing preservation, bypassing the option guard, or
+reversing its parser each fails tests. The existing monomorphization controls
+exercise successful polymorphic assertions and failing false assertions under
+all three encodings with the option enabled.
