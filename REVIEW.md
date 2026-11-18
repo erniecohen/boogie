@@ -584,8 +584,9 @@ https://github.com/erniecohen/dafny/issues/281 .
 This preserves existing sharing rather than canonicalizing arbitrary literals.
 It adds no axiom, assumption or assertion. Both versions express the same Boolean
 values; retaining their sharing lets the existing join simplification apply.
-The change is confined to the already opt-in `/typeEncoding:m` path. The default
-arguments encoding does not call this duplicator.
+The change is confined to monomorphization. Dafny opts into `/typeEncoding:m`;
+its default arguments encoding does not call this duplicator. Boogie itself
+defaults to the monomorphic encoding.
 
 `MonomorphizationPreservesSharedBooleanConstants` checks both shared values on
 two incoming branches. Removing the preservation fails both cases. The existing
