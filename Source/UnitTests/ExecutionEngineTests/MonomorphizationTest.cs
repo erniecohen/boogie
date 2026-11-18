@@ -18,6 +18,49 @@ public class MonomorphizationTest
     return program;
   }
 
+  [TestCase(true)]
+  [TestCase(false)]
+  public void MonomorphizationPreservesSharedBooleanConstants(bool value)
+  {
+    var options = CommandLineOptions.FromArguments(TextWriter.Null, "/typeEncoding:m");
+    var program = Parse(@"
+function Id<T>(x: T): T;
+axiom (forall<T> x: T :: {Id(x)} Id(x) == x);
+procedure P(b: bool) returns (r: bool) {
+entry:
+  goto left, right;
+left:
+  assume b;
+  r := true;
+  goto done;
+right:
+  assume !b;
+  r := true;
+  goto done;
+done:
+  assert Id(r) == r;
+  return;
+}");
+    var shared = value ? Expr.True : Expr.False;
+    var assignments = program.Implementations.Single().Blocks
+      .SelectMany(block => block.Cmds).OfType<AssignCmd>().ToList();
+    Assert.AreEqual(2, assignments.Count);
+    foreach (var assignment in assignments)
+    {
+      assignment.Rhss = new List<Expr> { shared };
+    }
+    Assert.AreEqual(0, program.Resolve(options));
+    Assert.AreEqual(0, program.Typecheck(options));
+    Assert.AreEqual(MonomorphizableStatus.Monomorphizable, Monomorphizer.Monomorphize(options, program));
+    assignments = program.Implementations.Single().Blocks
+      .SelectMany(block => block.Cmds).OfType<AssignCmd>().ToList();
+    Assert.AreEqual(2, assignments.Count);
+    foreach (var assignment in assignments)
+    {
+      Assert.AreSame(shared, assignment.Rhss[0], "A join must retain the shared literal incarnation");
+    }
+  }
+
   [TestCase("m")]
   [TestCase("a")]
   [TestCase("p")]

@@ -1090,6 +1090,12 @@ namespace Microsoft.Boogie
 
     public override Expr VisitExpr(Expr node)
     {
+      // Passification recognizes these shared constants by identity at control-flow joins.
+      // Their built-in boolean type has no type parameters to instantiate.
+      if (ReferenceEquals(node, Expr.True) || ReferenceEquals(node, Expr.False))
+      {
+        return node;
+      }
       node = base.VisitExpr(node);
       node.Type = VisitType(node.Type);
       return node;

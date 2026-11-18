@@ -565,3 +565,29 @@ The key compares declarations by reference, as `/lockFreeExpansion` reads them: 
 not change a function, axiom or constant in place once verification has started.
 `Test/commandline/BackgroundCache.bpl` compares the whole command stream with `cmp`, with the noop
 solver and with Z3, whose unsat cores `/trackVerificationCoverage` asks for.
+
+
+## Shared Boolean constants in monomorphization
+
+`MonomorphizationDuplicator` preserves the existing shared `Expr.True` and
+`Expr.False` expressions. These constants have the built-in Boolean type, with no
+type parameter to instantiate. Other expressions still follow the ordinary
+cloning and type-instantiation path.
+
+Passification compares incarnations by reference at control-flow joins unless
+`/structuralLiterals` is enabled. Cloning a shared constant independently in each
+branch loses that equality, introducing unnecessary join incarnations and
+changing subsequent proof contexts. In Dafny, this affects definite-assignment
+trackers and the proof splitting of `BatchArrayWriter.Invoke`; see
+https://github.com/erniecohen/dafny/issues/281 .
+
+This preserves existing sharing rather than canonicalizing arbitrary literals.
+It adds no axiom, assumption or assertion. Both versions express the same Boolean
+values; retaining their sharing lets the existing join simplification apply.
+The change is confined to the already opt-in `/typeEncoding:m` path. The default
+arguments encoding does not call this duplicator.
+
+`MonomorphizationPreservesSharedBooleanConstants` checks both shared values on
+two incoming branches. Removing the preservation fails both cases. The existing
+monomorphization tests retain successful polymorphic assertions and failing
+false assertions under all three encodings.
