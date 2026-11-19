@@ -240,6 +240,8 @@ namespace Microsoft.Boogie
 
     public bool DeterministicLiteralHashes { get; set; }
 
+    public bool MonomorphicSharedLiterals { get; set; }
+
     public bool LegacyNoncanonicalMapPayloads { get; set; }
 
     public bool StructuralLiterals { get; set; }
@@ -1346,6 +1348,10 @@ namespace Microsoft.Boogie
           ps.GetIntArgument(x => LegacyNoncanonicalMapPayloads = x == 1, 2);
           return true;
 
+        case "monomorphicSharedLiterals":
+          ps.GetIntArgument(x => MonomorphicSharedLiterals = x == 1, 2);
+          return true;
+
         case "deterministicLiteralHashes":
           ps.GetIntArgument(x => DeterministicLiteralHashes = x == 1, 2);
           return true;
@@ -2076,6 +2082,12 @@ namespace Microsoft.Boogie
   /smokeTimeout:<n>
                 Timeout, in seconds, for a single theorem prover
                 invocation during smoke test, defaults to 10.
+  /monomorphicSharedLiterals:<n>
+                0 (default) - Clone shared Boolean literals during monomorphization.
+                1 - Preserve the existing shared true and false expressions so
+                  passification can recognize equal incarnations at joins. This can
+                  change solver resource use and results at a resource limit.
+                  Has no effect with the arguments or predicates encoding.
   /typeEncoding:<t>
                 Encoding of types when generating VC of a polymorphic program:
                    m = monomorphic (default)

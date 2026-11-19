@@ -111,3 +111,11 @@ in the same order, so resource counts are unchanged.  The separate opt-in
 `/scheduleByImplementation` lets an implementation's splits run one after the other on one prover,
 so that more contexts are restarted; it changes which solver process verifies which split, so
 resource counts can differ from a run without it.  See `REVIEW.md`.
+
+
+- Add opt-in `/monomorphicSharedLiterals:1` to preserve shared Boolean constants
+  during monomorphization so passification can recognize equal incarnations at
+  joins. This avoids redundant definite-assignment proof contexts, but can change
+  solver costs in either direction. Defaults and the arguments and predicates
+  encodings retain their existing input.
+  See https://github.com/erniecohen/dafny/issues/281 .

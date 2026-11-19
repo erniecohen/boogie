@@ -565,3 +565,58 @@ The key compares declarations by reference, as `/lockFreeExpansion` reads them: 
 not change a function, axiom or constant in place once verification has started.
 `Test/commandline/BackgroundCache.bpl` compares the whole command stream with `cmp`, with the noop
 solver and with Z3, whose unsat cores `/trackVerificationCoverage` asks for.
+
+
+## Shared Boolean constants in monomorphization
+
+`/monomorphicSharedLiterals:1` opts into preserving the existing shared
+`Expr.True` and `Expr.False` expressions in `MonomorphizationDuplicator`.
+These constants have the built-in Boolean type, with no type parameter to
+instantiate. Other expressions still follow the ordinary cloning and
+type-instantiation path.
+
+Passification compares incarnations by reference at control-flow joins unless
+`/structuralLiterals` is enabled. Cloning a shared constant independently in each
+branch loses that equality, introducing unnecessary join incarnations and
+changing subsequent proof contexts. In Dafny, this affects definite-assignment
+trackers and the proof splitting of `BatchArrayWriter.Invoke`; see
+https://github.com/erniecohen/dafny/issues/281 .
+
+This preserves existing sharing rather than canonicalizing arbitrary literals.
+It adds no axiom, assumption or asserted fact. Both versions express the same
+Boolean values; retaining their sharing lets the existing join simplification
+apply. The arguments and predicates encodings do not call this duplicator.
+Dafny defaults to the arguments encoding; standalone Boogie defaults to the
+monomorphic encoding.
+
+The option defaults to 0, retaining the original cloning path. Preserving
+sharing changes proof contexts and names, and proof cost is not monotone in this
+change. The unconditional prototype made `textbook/BQueue.bpl` hit its existing
+limit in the Z3 4.11.2 CI configurations. Existing defaults therefore retain the
+old behavior; clients can evaluate the sharing policy explicitly with
+`/typeEncoding:m /monomorphicSharedLiterals:1`. This is an optimization option,
+not a soundness fix or a new axiom family.
+
+`MonomorphizationPreservesSharedBooleanConstants` checks both shared values on
+two incoming branches, with sharing enabled and disabled. The option test checks
+its default and range. Removing preservation, bypassing the option guard, or
+reversing its parser each fails tests. The existing monomorphization controls
+exercise successful polymorphic assertions and failing false assertions under
+all three encodings with the option enabled.
+
+The CLI controls in `Test/test21/shared-boolean-literals.bpl` check successful
+polymorphic facts and rejection of `assert false` in all six combinations of
+encoding (`m`, `a`, `p`) and policy (0, 1). The object-identity regression uses
+the programmatic interface because textual serialization does not preserve
+shared expression objects.
+
+Dafny dependency adoption must use a released package and update
+`docs/dev/design/241-option-audit.tsv` in the same dependency-update change.
+Its audit enumerates the inherited prover interface; the new row is:
+
+```tsv
+prover	Microsoft.Boogie.CoreOptions.MonomorphicSharedLiterals		System.Boolean	execution	complete inherited prover interface enumerated and encoded before first query
+```
+
+The current pinned Dafny dependency does not have this property, so that row
+belongs with dependency adoption rather than in Dafny's unchanged pinned tree.
