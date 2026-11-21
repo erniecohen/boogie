@@ -242,10 +242,50 @@ namespace VC
         log = log + "." + index;
       }
 
-      return new Checker(this, log, Options.ProverLogFileAppend);
+      var checker = new Checker(this, log, Options.ProverLogFileAppend);
+      lock (createdList)
+      {
+        createdList.RemoveAll(c => c.IsClosed);
+        createdList.Add(checker);
+      }
+      return checker;
+    }
+
+    // Every checker this pool made that was not closed when the list was last pruned.
+    private readonly List<Checker> createdList = new();
+
+    /// <summary>
+    /// The program will not be verified again: every idle checker last set up for it forgets it and
+    /// drops its prover's context, which would otherwise keep the program and the context's
+    /// declarations and axioms reachable until the checker is next used.  Busy checkers are left
+    /// alone.  Nothing is sent to a solver, and a released checker is set up for its next program as
+    /// any checker last used for another program is, so verification results and resource counts
+    /// are unchanged.  Returns the number of checkers released.
+    /// </summary>
+    public int Release(Program program)
+    {
+      List<Checker> checkers;
+      lock (createdList)
+      {
+        createdList.RemoveAll(c => c.IsClosed);
+        checkers = createdList.ToList();
+      }
+      return checkers.Count(checker => checker.Release(program));
     }
 
     /// <summary>The numbers of contexts this pool's checkers set up from their declarations and restarted under /cacheBackground.</summary>
+    /// <summary>The number of live checkers still busy with a check or not yet back in the pool.</summary>
+    internal int CheckersNotBackInPool
+    {
+      get
+      {
+        lock (createdList)
+        {
+          return createdList.Count(c => !c.IsClosed && !c.IsBackInPool);
+        }
+      }
+    }
+
     public int ContextSetups => contextSetups;
     public int ContextRestarts => contextRestarts;
     private int contextSetups, contextRestarts;

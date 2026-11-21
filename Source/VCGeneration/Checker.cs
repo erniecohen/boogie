@@ -67,7 +67,11 @@ namespace Microsoft.Boogie
     {
       Contract.Requires(IsBusy);
 
-      status = CheckerStatus.Idle;
+      lock (this)
+      {
+        returningToIdle = true;
+        status = CheckerStatus.Idle;
+      }
       try {
         // This is a hang safeguard, not a scheduling deadline. A healthy solver may
         // take longer than 100 ms to drain output even with no proof time limit.
@@ -75,6 +79,15 @@ namespace Microsoft.Boogie
           ? TimeSpan.FromMilliseconds(100)
           : TimeSpan.FromSeconds(Options.SolverIdleTimeout);
         await thmProver.GoBackToIdle().WaitAsync(timeout, timeProvider);
+        lock (this)
+        {
+          if (pendingRelease != null && ReferenceEquals(Program, pendingRelease))
+          {
+            ReleaseContext();
+          }
+          pendingRelease = null;
+          returningToIdle = false;
+        }
         Pool.AddChecker(this);
       }
       catch (Exception e) when (e is TimeoutException ||
@@ -143,6 +156,7 @@ namespace Microsoft.Boogie
       var usedTypes = UsedTypes.Collect(prog, split.Implementation, Options.CacheUsedTypes);
       lock (this)
       {
+        pendingRelease = null;
         hasOutput = default;
         outcome = default;
         outputExn = default;
@@ -178,6 +192,58 @@ namespace Microsoft.Boogie
         SolverOptions.RandomSeed = seed;
         Setup(prog, ctx, declarations);
       }
+    }
+
+    /// <summary>
+    /// If the checker is idle and was last set up for <paramref name="program"/>, forgets that
+    /// program and drops its prover's context, so that neither stays reachable from the pool.
+    /// Sends the solver nothing.  The checker's next target is then set up from its declarations,
+    /// as it would be for any other program, so the solver receives the same commands.
+    /// </summary>
+    internal bool Release(Program program)
+    {
+      lock (this)
+      {
+        if (status == CheckerStatus.Closed || !ReferenceEquals(Program, program))
+        {
+          return false;
+        }
+        if (status != CheckerStatus.Idle || returningToIdle || pendingRelease != null)
+        {
+          // Still finishing its last check, or its prover is still draining it: released when it
+          // is back in the pool, unless it is targeted at a program again first.
+          pendingRelease = program;
+          return true;
+        }
+        ReleaseContext();
+        return true;
+      }
+    }
+
+    private Program pendingRelease;
+
+    internal bool IsBackInPool
+    {
+      get
+      {
+        lock (this)
+        {
+          return status != CheckerStatus.Busy && !returningToIdle;
+        }
+      }
+    }
+
+    // Between the end of a check and the checker's return to the pool, while the prover drains.
+    private bool returningToIdle;
+
+    private void ReleaseContext()
+    {
+      Program = null;
+      contextKey = null;
+      LastImplementation = null;
+      handler = null;
+      SolverOptions.UsedTypes = new List<Type>();
+      thmProver.ReleaseContext();
     }
 
     /// <summary>The implementation of the split the checker was last targeted at.</summary>

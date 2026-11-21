@@ -620,3 +620,39 @@ prover	Microsoft.Boogie.CoreOptions.MonomorphicSharedLiterals		System.Boolean	ex
 
 The current pinned Dafny dependency does not have this property, so that row
 belongs with dependency adoption rather than in Dafny's unchanged pinned tree.
+
+## Releasing a program's checkers: `CheckerPool.Release`
+
+An idle checker keeps the program it was last set up for, and its prover keeps that program's
+context: the declarations it collected, the axioms and type declarations, the names, and the
+recorded commands.  A client that verifies a sequence of programs in one process, as Dafny does
+module by module, keeps every finished program alive through whichever checkers last served it.
+
+`CheckerPool.Release(program)` tells the pool the program will not be verified again.  Each checker
+that was last set up for it forgets it and drops its prover's managed context; the solver process
+stays up and is sent nothing.  A checker still finishing the program's last check, or still
+draining its prover, is released once it is back in the pool, unless it is targeted again first.
+The method returns the number of checkers released.
+
+A released checker holds no program, so its next target begins with a `FullReset`, as for any
+checker whose last program was another one.  The solver therefore gets the same commands, byte
+for byte, with or without the release, including when the released program is verified again;
+`ReleaseContext` resets only what `FullReset` resets before sending `(reset)`.  The release is a
+memory measure only: it adds no option and changes no output.
+
+`CheckerReleaseTest` checks:
+
+- `TheSolverGetsTheSameCommands`: the logged commands of a run that verifies one program,
+  releases it, verifies another and the first again are those of the same run without the
+  release, under `/typeEncoding:a` and `:p`, with `/prune:1`, `/prune:0`,
+  `/vcsSplitOnEveryAssert`, `/cacheBackground`, `/scheduleByImplementation` and
+  `/trackVerificationCoverage`;
+- `AReleasedProgramCanBeCollected`: without a release an idle checker keeps its last program
+  alive (the positive control), and with one the program is collected;
+- `AReleaseDuringTheLastCheckIsDeferred`: a release made when a task reports its result, while its
+  checker is still busy, takes effect once the checker is back in the pool;
+- `OnlyCheckersOfTheProgramAreReleased`: releasing a program no checker was set up for, or another
+  program, or the same program twice, releases nothing.
+
+Sending `(reset)` from the release, keeping the program in the checker, releasing checkers of
+other programs, dropping the deferral, or dropping a deferred release each fails a test.
