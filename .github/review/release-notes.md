@@ -121,7 +121,8 @@ resource counts can differ from a run without it.  See `REVIEW.md`.
   See https://github.com/erniecohen/dafny/issues/281 .
 
 - Add `CheckerPool.Release(Program)`: a client that will not verify a program again can make the
-  idle checkers last set up for it forget it and drop their prover's managed context, so that the
-  program can be collected.  The solver is sent nothing, and gets the same commands with or without
+  idle checkers last set up for it forget it and drop their prover's managed context, including
+  the VC variables the translator keeps for every program's globals and locals, so that the
+  program and its variables can be collected.  The solver is sent nothing, and gets the same commands with or without
   a release.  No option is added and no output changes.  See `REVIEW.md` and
   https://github.com/erniecohen/dafny/issues/241 .

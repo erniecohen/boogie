@@ -627,10 +627,14 @@ An idle checker keeps the program it was last set up for, and its prover keeps t
 context: the declarations it collected, the axioms and type declarations, the names, and the
 recorded commands.  A client that verifies a sequence of programs in one process, as Dafny does
 module by module, keeps every finished program alive through whichever checkers last served it.
+The prover's expression translator also keeps, for as long as the checker lives, a VC variable for
+every global, local and incarnation of every program the checker has translated, and the
+code-expression converter of its last split; so even the programs a checker has moved on from keep
+their variables, and the declarations those reach, alive.
 
 `CheckerPool.Release(program)` tells the pool the program will not be verified again.  Each checker
-that was last set up for it forgets it and drops its prover's managed context; the solver process
-stays up and is sent nothing.  A checker still finishing the program's last check, or still
+that was last set up for it forgets it and drops its prover's managed context, including the
+translator's variables and converter; the solver process stays up and is sent nothing.  A checker still finishing the program's last check, or still
 draining its prover, is released once it is back in the pool, unless it is targeted again first.
 The method returns the number of checkers released.
 
@@ -648,7 +652,8 @@ memory measure only: it adds no option and changes no output.
   `/vcsSplitOnEveryAssert`, `/cacheBackground`, `/scheduleByImplementation` and
   `/trackVerificationCoverage`;
 - `AReleasedProgramCanBeCollected`: without a release an idle checker keeps its last program
-  alive (the positive control), and with one the program is collected;
+  and its variables alive (the positive control), and with one the program, its constants, and
+  its implementations' formals and locals are all collected;
 - `AReleaseDuringTheLastCheckIsDeferred`: a release made when a task reports its result, while its
   checker is still busy, takes effect once the checker is back in the pool;
 - `OnlyCheckersOfTheProgramAreReleased`: releasing a program no checker was set up for, or another
