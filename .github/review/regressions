@@ -6,3 +6,4 @@ Source/UnitTests/ExecutionEngineTests/MonomorphizationTest.cs
 Source/UnitTests/ExecutionEngineTests/BackgroundCacheTest.cs
 Test/commandline/BackgroundCache.bpl
 Test/test21/shared-boolean-literals.bpl
+Source/UnitTests/ExecutionEngineTests/CheckerReleaseTest.cs
