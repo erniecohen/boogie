@@ -5,7 +5,7 @@ permissions:
   contents: read
 jobs:
   compare:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, macOS, ARM64, fork-ci]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -22,13 +22,13 @@ jobs:
           dotnet build baseline/Source/BoogieDriver -c Release -warnaserror
       - name: Pin solver
         run: |
-          curl -fsSLo z3.zip https://github.com/Z3Prover/z3/releases/download/z3-5.1.0/z3-5.1.0-x64-glibc-2.39.zip
-          echo 'f47be8d27d3230e823bf1eeede2fe0abaca55bb78d0b59974370e6689a92284a  z3.zip' | sha256sum -c -
+          curl -fsSLo z3.zip https://github.com/Z3Prover/z3/releases/download/z3-5.1.0/z3-5.1.0-arm64-osx-13.3.zip
+          echo '81d29e934fd863079a74af35eecaeaef8047e0e12414d33ca322b358d68383db  z3.zip' | shasum -a 256 -c -
           unzip -q z3.zip
       - name: Record witnesses and legacy byte identity
         run: |
           python3 .github/review/map-payloads-probe.py baseline/Source/BoogieDriver/bin/Release/net8.0/BoogieDriver.dll \
-            Source/BoogieDriver/bin/Release/net8.0/BoogieDriver.dll z3-5.1.0-x64-glibc-2.39/bin/z3 results
+            Source/BoogieDriver/bin/Release/net8.0/BoogieDriver.dll z3-5.1.0-arm64-osx-13.3/bin/z3 results
           if test -f results/report.json; then cat results/report.json >> "$GITHUB_STEP_SUMMARY"; fi
       - uses: actions/upload-artifact@v4
         if: always()

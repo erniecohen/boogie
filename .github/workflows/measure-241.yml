@@ -10,15 +10,13 @@
 # DafnyStandardLibraries.doo, with the options of its manifest.
 name: measure-241
 
+# Manual only: it was written for Linux runners (GNU time, nproc, free) and is kept as a record.
 on:
   workflow_dispatch:
-  push:
-    branches: [ perf/241-background-cache ]
-    paths: [ '.github/workflows/measure-241.yml', '.github/measure/**' ]
 
 jobs:
   measure:
-    runs-on: ubuntu-22.04
+    runs-on: [self-hosted, macOS, ARM64, fork-ci]
     timeout-minutes: 300
     defaults:
       run:
