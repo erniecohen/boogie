@@ -140,13 +140,24 @@ procedure R(x: int)
   // The program is verified, and possibly released, in a method of its own, so that no local of the
   // test keeps it alive.
   [MethodImpl(MethodImplOptions.NoInlining)]
-  private static async Task<(WeakReference Program, int Released)> VerifyAndForget(ExecutionEngine engine,
-    CommandLineOptions options, bool release)
+  private static async Task<(WeakReference Program, List<WeakReference> Variables, int Released)> VerifyAndForget(
+    ExecutionEngine engine, CommandLineOptions options, bool release)
   {
     var program = Parse(options, First, "first.bpl");
     await Run(engine, program);
     var released = release ? engine.CheckerPool.Release(program) : 0;
-    return (new WeakReference(program), released);
+    return (new WeakReference(program), Variables(program), released);
+  }
+
+  // The program's constants, and the formals and locals of its implementations, which the prover's
+  // translator binds to VC variables of its own.
+  private static List<WeakReference> Variables(Program program)
+  {
+    var variables = program.Constants.Cast<Variable>()
+      .Concat(program.Implementations.SelectMany(i => i.InParams.Concat(i.OutParams).Concat(i.LocVars)))
+      .Select(v => new WeakReference(v)).ToList();
+    Assert.Greater(variables.Count, 0);
+    return variables;
   }
 
   // The continuations of a finished check, which return its checker to the pool, may still hold the
@@ -173,13 +184,17 @@ procedure R(x: int)
       var options = Options(arguments);
       options.ProverOptions.Add("SOLVER=noop");
       using var engine = ExecutionEngine.CreateWithoutSharedCache(options);
-      var (kept, none) = await VerifyAndForget(engine, options, false);
+      var (kept, keptVariables, none) = await VerifyAndForget(engine, options, false);
       Assert.AreEqual(0, none);
       Assert.IsFalse(await Collected(kept), $"{arguments}: an idle checker no longer holds its last program; the release is untested");
+      Assert.IsFalse(await Collected(keptVariables[0]), $"{arguments}: the release of variables is untested");
 
-      var (released, count) = await VerifyAndForget(engine, options, true);
+      var (released, variables, count) = await VerifyAndForget(engine, options, true);
       Assert.Greater(count, 0, arguments);
       Assert.IsTrue(await Collected(released), $"{arguments}: a released program is still reachable");
+      foreach (var variable in variables) {
+        Assert.IsTrue(await Collected(variable), $"{arguments}: a variable of a released program is still reachable");
+      }
     }
   }
 

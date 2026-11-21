@@ -254,7 +254,7 @@ namespace Microsoft.Boogie.SMTLib
       Axioms.Clear();
       TypeDecls.Clear();
       AxiomsAreSetup = false;
-      ctx.Reset();
+      ctx.Release();
       ctx.KnownDatatypes.Clear();
       DeclCollector.Reset();
       NamedAssumes.Clear();
