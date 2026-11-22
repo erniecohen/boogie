@@ -135,11 +135,21 @@ jobs:
         run: |
           dotnet tool restore
           nice -n 10 dotnet build -m:2 -warnaserror Source/Boogie.sln
+      - name: Job-local elan
+        # A self-hosted runner shares its user's home; keep elan and every Lean toolchain
+        # it installs inside this job's temporary directory.
+        run: |
+          echo "ELAN_HOME=$RUNNER_TEMP/elan" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/elan/bin" >> "$GITHUB_PATH"
       - name: Setup Lean
         uses: Julian/setup-lean@v1
         with:
           # Lean version will be chosen based on Test/lean-auto/lean-toolchain
           default-toolchain-file: Test/lean-auto/lean-toolchain
+      - name: Lean must come from the job-local elan
+        run: |
+          echo "$RUNNER_TEMP/elan/bin" >> "$GITHUB_PATH"
+          case "$(command -v lake)" in "$RUNNER_TEMP"/elan/*) ;; *) echo "::error::lake is $(command -v lake)"; exit 1 ;; esac
       - name: Test Lean generator on textbook examples
         working-directory: Test/lean-auto
         run: |
