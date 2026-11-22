@@ -241,6 +241,31 @@ namespace Microsoft.Boogie.SMTLib
       background = null;
     }
 
+    /// <summary>
+    /// Clears what <see cref="FullReset"/> would set up again, without its commands to the solver.
+    /// </summary>
+    public override void ReleaseContext()
+    {
+      commonNamer = null;
+      finalNamer = null;
+      common.Clear();
+      CachedCommonLength = null;
+      CachedAxBuilder = null;
+      Axioms.Clear();
+      TypeDecls.Clear();
+      AxiomsAreSetup = false;
+      ctx.Release();
+      ctx.KnownDatatypes.Clear();
+      DeclCollector.Reset();
+      NamedAssumes.Clear();
+      contextPhase = ContextPhase.None;
+      recording = null;
+      afterFullReset = null;
+      background = null;
+      namedAssumesBaseline = null;
+      currentErrorHandler = null;
+    }
+
     public override bool TryRestartContext(VCExpressionGenerator generator)
     {
       if (contextPhase != ContextPhase.Recorded || !lastCheckCompleted || HadErrors || afterFullReset == null

@@ -187,6 +187,13 @@ namespace Microsoft.Boogie.VCExprAST
         return new VariableMapping<VarKind>(this);
       }
 
+      /// <summary>Forgets every binding, as a new mapping would have none.</summary>
+      public void Clear()
+      {
+        Mapping.Clear();
+        Mapping.Add(new Dictionary<VarKind, VCExprVar>());
+      }
+
       public void PushScope()
       {
         Mapping.Add(new Dictionary<VarKind, VCExprVar>());
@@ -312,6 +319,19 @@ namespace Microsoft.Boogie.VCExprAST
         Contract.Assert(false);
         throw new Cce.UnreachableException();
       }
+    }
+
+    /// <summary>
+    /// Forgets the VC variables made for the program's globals, locals and incarnations, which the
+    /// translator otherwise keeps, with the variables themselves, for as long as it lives, and the
+    /// code-expression converter of the last split, which holds that split.  (Bound variables and
+    /// formals are bound in scopes that are gone once a VC is made.)  Called only when nothing
+    /// translated so far will be used again; each split sets its converter before its VC is made.
+    /// </summary>
+    public void ForgetProgram()
+    {
+      UnboundVariables.Clear();
+      codeExprConverter = null;
     }
 
     public VCExprVar LookupVariable(Variable boogieVar)

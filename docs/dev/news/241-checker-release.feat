@@ -1,0 +1,5 @@
+Add `CheckerPool.Release(Program)`. A client that will not verify a program again can
+make the idle checkers last set up for it forget it and drop their prover's managed
+context, including the VC variables its translator keeps for every program's globals and
+locals, so that the program and its variables can be collected. The solver is sent nothing and gets the
+same commands with or without a release; no option is added and no output changes.

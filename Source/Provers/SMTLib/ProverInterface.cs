@@ -192,6 +192,16 @@ public abstract class ProverInterface
   public virtual bool TryRestartContext(VCExpressionGenerator gen) => false;
 
   /// <summary>
+  /// Drops the managed state of the context the prover was last set up for: its declarations,
+  /// axioms and the caches built from them.  Sends the solver nothing.  The next use of the prover
+  /// must begin with a <see cref="FullReset"/>, which sets every part of that state up again, so the
+  /// solver receives the same commands as it would without the release.
+  /// </summary>
+  public virtual void ReleaseContext()
+  {
+  }
+
+  /// <summary>
   /// MSchaef: Allows to Push a VCExpression as Axiom on the prover stack (beta)
   /// for now it is only implemented by ProcessTheoremProver and still requires some
   /// testing

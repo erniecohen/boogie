@@ -65,6 +65,15 @@ namespace Microsoft.Boogie
     public abstract object Clone();
     public abstract void Reset();
     public abstract void Clear();
+
+    /// <summary>
+    /// Forgets the program the context was last used for, including the variables its translator
+    /// has bound.  The context is then used only after a reset.
+    /// </summary>
+    public virtual void Release()
+    {
+      Clear();
+    }
   }
 
   [ContractClassFor(typeof(ProverContext))]
@@ -170,6 +179,12 @@ namespace Microsoft.Boogie
     {
       distincts = new List<Variable>();
       axiomConjuncts = new List<VCExpr>();
+    }
+
+    public override void Release()
+    {
+      Clear();
+      translator.ForgetProgram();
     }
 
     protected DeclFreeProverContext(DeclFreeProverContext ctxt)
