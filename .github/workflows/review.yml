@@ -3,8 +3,8 @@
 # (.github/workflows/test.yml and test-lean-auto.yml, with the timeouts of upstream's
 # master and a process limit of 300 s for each test's Boogie), without the deployment
 # steps.  The job `packages` builds the NuGet packages at this line's version, and on a
-# tag `release` attaches them, with their sha256 sums, to a GitHub release.  Standard
-# GitHub-hosted runners only.
+# tag `release` attaches them, with their sha256 sums, to a GitHub release.  Self-hosted
+# arm64 macOS runners only (never GitHub-hosted); draft pull requests run nothing.
 name: review
 
 on:
@@ -13,6 +13,7 @@ on:
     tags: ['v*']
   pull_request:
     branches: ['review/**']
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 permissions:
@@ -24,20 +25,21 @@ concurrency:
 
 env:
   SOLUTION: Source/Boogie.sln
-  Z3URL: https://github.com/Z3Prover/z3/releases/download/z3-4.11.2/z3-4.11.2-x64-glibc-2.31.zip
-  CVC5URL: https://github.com/cvc5/cvc5/releases/download/cvc5-0.0.7/cvc5-Linux
+  Z3URL: https://github.com/Z3Prover/z3/releases/download/z3-4.11.2/z3-4.11.2-arm64-osx-11.0.zip
+  CVC5URL: https://github.com/cvc5/cvc5/releases/download/cvc5-1.4.2/cvc5-macOS-arm64-static.zip
   DOTNET_PROCESSOR_COUNT: '2'
   DOTNET_NOLOGO: 'true'
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
 
 jobs:
   canonical-map-probe:
-    if: ${{ github.head_ref == 'codex/284-canonical-map-payloads' || github.ref == 'refs/heads/codex/284-canonical-map-payloads' }}
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.head_ref == 'codex/284-canonical-map-payloads' || github.ref == 'refs/heads/codex/284-canonical-map-payloads') }}
     uses: ./.github/workflows/map-payloads-probe.yml
 
   version:
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     name: Version
-    runs-on: ubuntu-22.04
+    runs-on: [self-hosted, macOS, ARM64, fork-ci]
     timeout-minutes: 10
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -49,8 +51,9 @@ jobs:
         run: sh .github/review/version.sh | tee -a "$GITHUB_OUTPUT"
 
   test:
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     name: Boogie CI (${{ matrix.configuration }}, ${{ matrix.lit_param }})
-    runs-on: ubuntu-22.04
+    runs-on: [self-hosted, macOS, ARM64, fork-ci]
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -58,6 +61,9 @@ jobs:
         configuration: [Debug, Release]
         lit_param: ["batch_mode=True", "batch_mode=False"]
     steps:
+      - name: Runner-local .NET install directory
+        # setup-dotnet's default, the user's ~/.dotnet, is shared by every runner on the host.
+        run: echo "DOTNET_INSTALL_DIR=$RUNNER_TOOL_CACHE/boogie-dotnet" >> "$GITHUB_ENV"
       - name: Setup dotnet
         uses: actions/setup-dotnet@v4
         with:
@@ -69,16 +75,24 @@ jobs:
       - name: Install tools, build Boogie, test Boogie
         run: |
           # Download a Z3 release
-          wget ${Z3URL}
-          unzip z3*.zip
-          export PATH="$(find $PWD/z3* -name bin -type d):$PATH"
-          # Download a CVC5 release
-          mkdir -p bin
-          (cd bin && wget ${CVC5URL} && mv cvc5-Linux cvc5 && chmod +x cvc5)
-          export PATH="$PWD/bin:$PATH"
-          # Install python tools
-          sudo pip3 install setuptools
-          sudo pip3 install lit OutputCheck pyyaml psutil
+          case "$(command -v dotnet)" in "$RUNNER_TOOL_CACHE"/boogie-dotnet/*) ;; *) echo "::error::dotnet is $(command -v dotnet)"; exit 1 ;; esac
+          T="$RUNNER_TEMP/boogie-tools"
+          rm -rf "$T" && mkdir -p "$T"
+          curl -fsSL "${Z3URL}" -o "$T/z3.zip"
+          unzip -q "$T/z3.zip" -d "$T"
+          export PATH="$(find "$T" -path '*z3*' -name bin -type d):$PATH"
+          # Download a CVC5 release (arm64 macOS; the old 0.0.7 macOS build is x86-64 only)
+          curl -fsSL "${CVC5URL}" -o "$T/cvc5.zip"
+          unzip -q "$T/cvc5.zip" -d "$T"
+          export PATH="$(dirname "$(find "$T" -path '*cvc5*' -name cvc5 -type f -perm -u+x | head -1)"):$PATH"
+          z3 --version && cvc5 --version | head -1
+          # Install python tools into a job-local virtual environment
+          python3 -m venv "$T/venv"
+          "$T/venv/bin/pip" install -q setuptools lit OutputCheck pyyaml psutil
+          export PATH="$T/venv/bin:$PATH"
+          # OutputCheck opens its check file in mode 'rU', which Python 3.11 removed.
+          grep -rl "'rU'" "$T"/venv/lib/python3*/site-packages/OutputCheck | xargs sed -i '' "s/'rU'/'r'/g"
+          ! grep -rq "'rU'" "$T"/venv/lib/python3*/site-packages/OutputCheck
           # Change directory to Boogie root folder
           cd $GITHUB_WORKSPACE
           # Restore dotnet tools
@@ -99,11 +113,17 @@ jobs:
           # runners, where the process limit then aborts it (upstream's master has reworked it).
           nice -n 10 lit -j 2 --param ${{ matrix.lit_param }} --param boogie_params=-processTimeLimit:300 -v --timeout=300 -D configuration=${{ matrix.configuration }} Test
 
+  # Off on these runners: this macOS's dyld rejects the module libraries Lean v4.11.0 builds
+  # ("__DATA_CONST segment missing SG_READ_ONLY flag").  This line does not change LeanAuto.
   lean-auto:
+    if: ${{ false }}
     name: LeanAuto CI
-    runs-on: ubuntu-22.04
+    runs-on: [self-hosted, macOS, ARM64, fork-ci]
     timeout-minutes: 90
     steps:
+      - name: Runner-local .NET install directory
+        # setup-dotnet's default, the user's ~/.dotnet, is shared by every runner on the host.
+        run: echo "DOTNET_INSTALL_DIR=$RUNNER_TOOL_CACHE/boogie-dotnet" >> "$GITHUB_ENV"
       - name: Setup dotnet
         uses: actions/setup-dotnet@v4
         with:
@@ -122,11 +142,21 @@ jobs:
         run: |
           dotnet tool restore
           nice -n 10 dotnet build -m:2 -warnaserror Source/Boogie.sln
+      - name: Job-local elan
+        # A self-hosted runner shares its user's home; keep elan and every Lean toolchain
+        # it installs inside this job's temporary directory.
+        run: |
+          echo "ELAN_HOME=$RUNNER_TEMP/elan" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/elan/bin" >> "$GITHUB_PATH"
       - name: Setup Lean
         uses: Julian/setup-lean@v1
         with:
           # Lean version will be chosen based on Test/lean-auto/lean-toolchain
           default-toolchain-file: Test/lean-auto/lean-toolchain
+      - name: Lean must come from the job-local elan
+        run: |
+          echo "$RUNNER_TEMP/elan/bin" >> "$GITHUB_PATH"
+          case "$(command -v lake)" in "$RUNNER_TEMP"/elan/*) ;; *) echo "::error::lake is $(command -v lake)"; exit 1 ;; esac
       - name: Test Lean generator on textbook examples
         working-directory: Test/lean-auto
         run: |
@@ -134,12 +164,16 @@ jobs:
           ./testall.sh
 
   packages:
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     name: Packages
     needs: version
-    runs-on: ubuntu-22.04
+    runs-on: [self-hosted, macOS, ARM64, fork-ci]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Runner-local .NET install directory
+        # setup-dotnet's default, the user's ~/.dotnet, is shared by every runner on the host.
+        run: echo "DOTNET_INSTALL_DIR=$RUNNER_TOOL_CACHE/boogie-dotnet" >> "$GITHUB_ENV"
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
@@ -163,7 +197,7 @@ jobs:
             unzip -p "$p.$VERSION.nupkg" "$p.nuspec" | grep -q "<version>$VERSION</version>"
           done
           test "$(ls *.nupkg | wc -l)" -eq 14
-          sha256sum *.nupkg | tee SHA256SUMS
+          shasum -a 256 *.nupkg | tee SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: packages
@@ -174,18 +208,22 @@ jobs:
           retention-days: 90
 
   idle-handshake:
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     name: Idle handshake (Z3 5.1.0)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, macOS, ARM64, fork-ci]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Runner-local .NET install directory
+        # setup-dotnet's default, the user's ~/.dotnet, is shared by every runner on the host.
+        run: echo "DOTNET_INSTALL_DIR=$RUNNER_TOOL_CACHE/boogie-dotnet" >> "$GITHUB_ENV"
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
       - name: Fetch checksum-pinned Z3 5.1.0
         run: |
-          curl -fsSL https://github.com/Z3Prover/z3/releases/download/z3-5.1.0/z3-5.1.0-x64-glibc-2.39.zip -o "$RUNNER_TEMP/z3.zip"
-          echo "f47be8d27d3230e823bf1eeede2fe0abaca55bb78d0b59974370e6689a92284a  $RUNNER_TEMP/z3.zip" | sha256sum -c -
+          curl -fsSL https://github.com/Z3Prover/z3/releases/download/z3-5.1.0/z3-5.1.0-arm64-osx-13.3.zip -o "$RUNNER_TEMP/z3.zip"
+          echo "81d29e934fd863079a74af35eecaeaef8047e0e12414d33ca322b358d68383db  $RUNNER_TEMP/z3.zip" | shasum -a 256 -c -
           unzip -q "$RUNNER_TEMP/z3.zip" -d "$RUNNER_TEMP/z3"
       - name: Build and run controlled handshake tests
         run: |
@@ -193,7 +231,7 @@ jobs:
           nice -n 10 dotnet test -m:2 -warnaserror -c Release Source/UnitTests/ExecutionEngineTests/ExecutionEngineTests.csproj --filter FullyQualifiedName~IdleHandshakeTest --logger 'trx;LogFileName=idle-handshake.trx' --results-directory idle-handshake
       - name: Compare verdicts, RU and command bytes
         run: |
-          nice -n 10 python3 .github/review/idle-handshake.py Source/BoogieDriver/bin/Release/net8.0/BoogieDriver.dll "$RUNNER_TEMP/z3/z3-5.1.0-x64-glibc-2.39/bin/z3" idle-handshake/comparison
+          nice -n 10 python3 .github/review/idle-handshake.py Source/BoogieDriver/bin/Release/net8.0/BoogieDriver.dll "$RUNNER_TEMP/z3/z3-5.1.0-arm64-osx-13.3/bin/z3" idle-handshake/comparison
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -203,9 +241,9 @@ jobs:
 
   release:
     name: GitHub release
-    needs: [version, test, lean-auto, packages]
-    if: github.ref_type == 'tag'
-    runs-on: ubuntu-22.04
+    needs: [version, test, packages]
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.ref_type == 'tag') }}
+    runs-on: [self-hosted, macOS, ARM64, fork-ci]
     timeout-minutes: 15
     permissions:
       contents: write
@@ -225,7 +263,7 @@ jobs:
           TAG: ${{ github.ref_name }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          (cd packages && sha256sum -c SHA256SUMS)
+          (cd packages && shasum -a 256 -c SHA256SUMS)
           {
             cat .github/review/release-notes.md
             echo
