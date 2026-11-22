@@ -29,6 +29,9 @@ jobs:
         with: { path: new, fetch-depth: 0 }
       - uses: actions/checkout@v4
         with: { path: base, ref: a65966416c15b8b2e865a02199ea9021d38f8032 }
+      - name: Runner-local .NET install directory
+        # setup-dotnet's default, the user's ~/.dotnet, is shared by every runner on the host.
+        run: echo "DOTNET_INSTALL_DIR=$RUNNER_TOOL_CACHE/boogie-dotnet" >> "$GITHUB_ENV"
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: '8.0.x' }
       - name: Tools
